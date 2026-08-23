@@ -1,0 +1,177 @@
+{
+  "entities": {
+    "Shop": {
+      "title": "Shop",
+      "description": "Barber shop tenant and settings",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "shopName": { "type": "string" },
+        "shopPhone": { "type": "string" },
+        "shopAddress": { "type": "string" },
+        "currencySymbol": { "type": "string" },
+        "defaultHaircutCommission": { "type": "number" },
+        "defaultChemicalCommission": { "type": "number" },
+        "defaultProductCommission": { "type": "number" },
+        "defaultTipPolicy": { "type": "number" },
+        "queueSlotDuration": { "type": "number" },
+        "themeId": { "type": "string" },
+        "receiptFooterMsg": { "type": "string" },
+        "updatedAt": { "type": "number" }
+      },
+      "required": ["email", "shopName"]
+    },
+    "Barber": {
+      "title": "Barber",
+      "description": "Barber team member in the shop",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "nickname": { "type": "string" },
+        "avatar": { "type": "string" },
+        "phone": { "type": "string" },
+        "color": { "type": "string" },
+        "haircutCommissionRate": { "type": "number" },
+        "chemicalCommissionRate": { "type": "number" },
+        "productCommissionRate": { "type": "number" },
+        "tipRate": { "type": "number" },
+        "active": { "type": "boolean" },
+        "notes": { "type": "string" }
+      },
+      "required": ["name", "nickname"]
+    },
+    "ProductItem": {
+      "title": "ProductItem",
+      "description": "Product in the shop inventory",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "category": { "type": "string" },
+        "price": { "type": "number" },
+        "stock": { "type": "number" },
+        "unit": { "type": "string" }
+      },
+      "required": ["name", "price", "stock"]
+    },
+    "SaleBill": {
+      "title": "SaleBill",
+      "description": "Sale transaction with multi-head count and commissions",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "billNumber": { "type": "string" },
+        "timestamp": { "type": "number" },
+        "dateStr": { "type": "string" },
+        "timeStr": { "type": "string" },
+        "barberId": { "type": "string" },
+        "barberName": { "type": "string" },
+        "customerName": { "type": "string" },
+        "headCount": { "type": "number" },
+        "haircutFee": { "type": "number" },
+        "chemicalFee": { "type": "number" },
+        "tipFee": { "type": "number" },
+        "totalProductsFee": { "type": "number" },
+        "grossTotal": { "type": "number" },
+        "paymentMethod": { "type": "string" },
+        "cashAmount": { "type": "number" },
+        "transferAmount": { "type": "number" },
+        "notes": { "type": "string" },
+        "queueId": { "type": "string" }
+      },
+      "required": ["billNumber", "grossTotal", "paymentMethod"]
+    },
+    "ShopExpense": {
+      "title": "ShopExpense",
+      "description": "Expense entry with 5 core fields",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "expenseNumber": { "type": "string" },
+        "timestamp": { "type": "number" },
+        "dateStr": { "type": "string" },
+        "timeStr": { "type": "string" },
+        "category": { "type": "string" },
+        "title": { "type": "string" },
+        "amount": { "type": "number" },
+        "payee": { "type": "string" },
+        "notes": { "type": "string" },
+        "paymentMethod": { "type": "string" }
+      },
+      "required": ["expenseNumber", "category", "amount", "dateStr"]
+    },
+    "QueueBooking": {
+      "title": "QueueBooking",
+      "description": "Appointment queue or barber leave block",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "queueNumber": { "type": "string" },
+        "barberId": { "type": "string" },
+        "barberName": { "type": "string" },
+        "date": { "type": "string" },
+        "startTime": { "type": "string" },
+        "endTime": { "type": "string" },
+        "customerName": { "type": "string" },
+        "customerPhone": { "type": "string" },
+        "serviceType": { "type": "string" },
+        "notes": { "type": "string" },
+        "status": { "type": "string" },
+        "isLeaveOrBlocked": { "type": "boolean" },
+        "leaveReason": { "type": "string" },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["queueNumber", "date", "startTime", "endTime"]
+    },
+    "UserAccount": {
+      "title": "UserAccount",
+      "description": "SaaS user account and approval state",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string", "format": "email" },
+        "shopId": { "type": "string" },
+        "status": { "type": "string" },
+        "role": { "type": "string" },
+        "registeredAt": { "type": "number" },
+        "lastLoginAt": { "type": "number" },
+        "shopName": { "type": "string" },
+        "notes": { "type": "string" },
+        "planName": { "type": "string" },
+        "expireDate": { "type": "string" }
+      },
+      "required": ["email", "status", "role"]
+    }
+  },
+  "firestore": {
+    "/system_users/{userId}": {
+      "schema": "UserAccount",
+      "description": "System registered users and admin approval records"
+    },
+    "/shops/{shopId}": {
+      "schema": "Shop",
+      "description": "Top-level tenant shop workspace and settings"
+    },
+    "/shops/{shopId}/barbers/{barberId}": {
+      "schema": "Barber",
+      "description": "Barbers in the shop"
+    },
+    "/shops/{shopId}/products/{productId}": {
+      "schema": "ProductItem",
+      "description": "Products in the shop inventory"
+    },
+    "/shops/{shopId}/bills/{billId}": {
+      "schema": "SaleBill",
+      "description": "Sales bills and orders"
+    },
+    "/shops/{shopId}/expenses/{expenseId}": {
+      "schema": "ShopExpense",
+      "description": "Expenses recorded for the shop"
+    },
+    "/shops/{shopId}/queues/{queueId}": {
+      "schema": "QueueBooking",
+      "description": "Queue bookings and barber leave time"
+    }
+  }
+}
