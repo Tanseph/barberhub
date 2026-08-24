@@ -14,6 +14,22 @@ import {
 } from 'lucide-react';
 import { sounds } from '../utils/sound';
 
+// Thai Months reference
+export const THAI_MONTHS = [
+  { value: '01', name: 'มกราคม', shortName: 'ม.ค.' },
+  { value: '02', name: 'กุมภาพันธ์', shortName: 'ก.พ.' },
+  { value: '03', name: 'มีนาคม', shortName: 'มี.ค.' },
+  { value: '04', name: 'เมษายน', shortName: 'เม.ย.' },
+  { value: '05', name: 'พฤษภาคม', shortName: 'พ.ค.' },
+  { value: '06', name: 'มิถุนายน', shortName: 'มิ.ย.' },
+  { value: '07', name: 'กรกฎาคม', shortName: 'ก.ค.' },
+  { value: '08', name: 'สิงหาคม', shortName: 'ส.ค.' },
+  { value: '09', name: 'กันยายน', shortName: 'ก.ย.' },
+  { value: '10', name: 'ตุลาคม', shortName: 'ต.ค.' },
+  { value: '11', name: 'พฤศจิกายน', shortName: 'พ.ย.' },
+  { value: '12', name: 'ธันวาคม', shortName: 'ธ.ค.' },
+];
+
 // Helper: Format time string (e.g. "13:00", "13.00") to Thai format "13.00 น."
 export const formatThaiTime = (timeStr?: string, withUnit: boolean = true): string => {
   if (!timeStr) return '-';
@@ -27,6 +43,214 @@ export const formatThaiTimeRange = (start?: string, end?: string): string => {
   const s = start.replace(':', '.');
   const e = end ? end.replace(':', '.') : '';
   return e ? `${s} - ${e} น.` : `${s} น.`;
+};
+
+// Helper: Format YYYY-MM-DD to Thai Date "วัน เดือน ปี พ.ศ." (e.g. "24 สิงหาคม 2569")
+export const formatThaiDateFull = (dateStr?: string): string => {
+  if (!dateStr || dateStr === 'all') return 'ทุกวันที่';
+  const parts = dateStr.split('-');
+  if (parts.length !== 3) return dateStr;
+  const y = parseInt(parts[0], 10);
+  const m = parseInt(parts[1], 10);
+  const d = parseInt(parts[2], 10);
+  const monthName = THAI_MONTHS[m - 1]?.name || `${m}`;
+  const thaiYear = y + 543;
+  return `${d} ${monthName} ${thaiYear}`;
+};
+
+// Helper: Format YYYY-MM-DD to Thai Date Short "24/08/2569"
+export const formatThaiDateShort = (dateStr?: string): string => {
+  if (!dateStr || dateStr === 'all') return 'ทุกวัน';
+  const parts = dateStr.split('-');
+  if (parts.length !== 3) return dateStr;
+  const y = parseInt(parts[0], 10);
+  const m = parseInt(parts[1], 10);
+  const d = parseInt(parts[2], 10);
+  const thaiYear = y + 543;
+  return `${String(d).padStart(2, '0')}/${String(m).padStart(2, '0')}/${thaiYear}`;
+};
+
+// 24-Hour Time slots from 06:00 to 23:45 (every 15 min, 100% no AM/PM)
+const ALL_24H_TIME_OPTIONS: string[] = [];
+for (let h = 6; h <= 23; h++) {
+  for (let m = 0; m < 60; m += 15) {
+    const hh = String(h).padStart(2, '0');
+    const mm = String(m).padStart(2, '0');
+    ALL_24H_TIME_OPTIONS.push(`${hh}:${mm}`);
+  }
+}
+for (let h = 0; h < 6; h++) {
+  for (let m = 0; m < 60; m += 15) {
+    const hh = String(h).padStart(2, '0');
+    const mm = String(m).padStart(2, '0');
+    ALL_24H_TIME_OPTIONS.push(`${hh}:${mm}`);
+  }
+}
+
+// Reusable Thai Date (วัน / เดือน / ปี พ.ศ.) Picker Component
+const ThaiDatePicker: React.FC<{
+  value: string; // "YYYY-MM-DD"
+  onChange: (val: string) => void;
+  label?: string;
+  isDark?: boolean;
+}> = ({ value, onChange, label, isDark }) => {
+  const parts = value.split('-').map(Number);
+  const curY = parts[0] || new Date().getFullYear();
+  const curM = parts[1] || new Date().getMonth() + 1;
+  const curD = parts[2] || new Date().getDate();
+
+  const daysInMonth = new Date(curY, curM, 0).getDate();
+  const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
+
+  // Thai Buddhist Years (e.g. 2567..2575 / 2024..2032)
+  const currentYear = new Date().getFullYear();
+  const years = Array.from({ length: 9 }, (_, i) => currentYear - 2 + i);
+
+  const handleDay = (d: number) => {
+    const padD = String(d).padStart(2, '0');
+    const padM = String(curM).padStart(2, '0');
+    onChange(`${curY}-${padM}-${padD}`);
+  };
+
+  const handleMonth = (m: number) => {
+    const maxDays = new Date(curY, m, 0).getDate();
+    const safeDay = Math.min(curD, maxDays);
+    const padD = String(safeDay).padStart(2, '0');
+    const padM = String(m).padStart(2, '0');
+    onChange(`${curY}-${padM}-${padD}`);
+  };
+
+  const handleYear = (y: number) => {
+    const maxDays = new Date(y, curM, 0).getDate();
+    const safeDay = Math.min(curD, maxDays);
+    const padD = String(safeDay).padStart(2, '0');
+    const padM = String(curM).padStart(2, '0');
+    onChange(`${y}-${padM}-${padD}`);
+  };
+
+  const selectClass = `px-2 py-2 rounded-xl text-xs font-bold font-mono border focus:outline-none ${
+    isDark
+      ? 'bg-zinc-900 border-zinc-700 text-zinc-100 focus:border-amber-500'
+      : 'bg-white border-slate-200 text-slate-800 focus:border-slate-800 shadow-2xs'
+  }`;
+
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center justify-between">
+        <label className={`text-xs font-semibold ${isDark ? 'text-zinc-300' : 'text-slate-700'} flex items-center gap-1.5`}>
+          <Calendar className="w-3.5 h-3.5 text-amber-600" />
+          <span>{label || 'วันที่จอง (วัน / เดือน / ปี)'}</span>
+        </label>
+        <span className="text-[11px] font-bold text-amber-600 bg-amber-500/10 px-2 py-0.5 rounded-md border border-amber-500/20">
+          {formatThaiDateShort(value)}
+        </span>
+      </div>
+
+      <div className="grid grid-cols-3 gap-1.5">
+        {/* วัน */}
+        <div>
+          <span className={`block text-[10px] font-medium ${isDark ? 'text-zinc-400' : 'text-slate-500'} mb-0.5`}>
+            วัน
+          </span>
+          <select
+            value={curD}
+            onChange={(e) => handleDay(Number(e.target.value))}
+            className={`w-full ${selectClass}`}
+          >
+            {days.map((d) => (
+              <option key={d} value={d}>
+                {d}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* เดือน */}
+        <div>
+          <span className={`block text-[10px] font-medium ${isDark ? 'text-zinc-400' : 'text-slate-500'} mb-0.5`}>
+            เดือน
+          </span>
+          <select
+            value={curM}
+            onChange={(e) => handleMonth(Number(e.target.value))}
+            className={`w-full ${selectClass}`}
+          >
+            {THAI_MONTHS.map((m, idx) => (
+              <option key={m.value} value={idx + 1}>
+                {m.name}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* ปี พ.ศ. */}
+        <div>
+          <span className={`block text-[10px] font-medium ${isDark ? 'text-zinc-400' : 'text-slate-500'} mb-0.5`}>
+            ปี (พ.ศ.)
+          </span>
+          <select
+            value={curY}
+            onChange={(e) => handleYear(Number(e.target.value))}
+            className={`w-full ${selectClass}`}
+          >
+            {years.map((y) => (
+              <option key={y} value={y}>
+                {y + 543}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      <p className={`text-[11px] font-medium ${isDark ? 'text-zinc-400' : 'text-slate-500'} pt-0.5`}>
+        🗓️ {formatThaiDateFull(value)}
+      </p>
+    </div>
+  );
+};
+
+// Reusable Pure 24-Hour Time Dropdown (NO AM/PM AT ALL)
+const Thai24HourSelect: React.FC<{
+  value: string;
+  onChange: (val: string) => void;
+  label: string;
+  isDark?: boolean;
+}> = ({ value, onChange, label, isDark }) => {
+  const options = useMemo(() => {
+    if (value && !ALL_24H_TIME_OPTIONS.includes(value)) {
+      return [...ALL_24H_TIME_OPTIONS, value].sort();
+    }
+    return ALL_24H_TIME_OPTIONS;
+  }, [value]);
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-1">
+        <label className={`text-xs font-bold ${isDark ? 'text-zinc-200' : 'text-slate-800'} flex items-center gap-1`}>
+          <Clock className="w-3.5 h-3.5 text-amber-600" />
+          <span>{label}</span>
+        </label>
+        <span className="text-[11px] font-mono font-extrabold text-amber-600">
+          {formatThaiTime(value)}
+        </span>
+      </div>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className={`w-full px-3 py-2.5 rounded-xl text-xs font-bold font-mono border focus:outline-none ${
+          isDark
+            ? 'bg-zinc-950 border-zinc-700 text-zinc-100 focus:border-amber-500'
+            : 'bg-white border-slate-200 text-slate-900 focus:border-slate-900 shadow-2xs'
+        }`}
+      >
+        {options.map((t) => (
+          <option key={t} value={t}>
+            {formatThaiTime(t)}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
 };
 
 export const TabQueue: React.FC = () => {
@@ -311,65 +535,36 @@ export const TabQueue: React.FC = () => {
                 )}
               </div>
 
-              {/* Date & Time Picker */}
+              {/* Date & Time Picker (วัน เดือน ปี พ.ศ. และเวลา 24 ชั่วโมง) */}
               <div className={`space-y-3.5 p-4 rounded-2xl border ${
                 isDark ? 'bg-zinc-950/80 border-zinc-800' : 'bg-slate-50/90 border-slate-200'
               }`}>
-                <div>
-                  <label className={`block text-xs font-semibold ${mutedText} mb-1`}>
-                    วันที่จอง
-                  </label>
-                  <input
-                    type="date"
-                    value={bookingDate}
-                    onChange={(e) => {
-                      setBookingDate(e.target.value);
-                      setFilterDate(e.target.value);
-                    }}
-                    required
-                    className={inputClass}
+                {/* วันที่จอง (วัน / เดือน / ปี) */}
+                <ThaiDatePicker
+                  value={bookingDate}
+                  onChange={(newD) => {
+                    setBookingDate(newD);
+                    setFilterDate(newD);
+                  }}
+                  label="วันที่จอง (วัน / เดือน / ปี พ.ศ.)"
+                  isDark={isDark}
+                />
+
+                {/* Time Selection: Start Time & End Time (100% 24h - NO AM/PM) */}
+                <div className="grid grid-cols-2 gap-3 pt-1 border-t border-dashed border-slate-200 dark:border-zinc-800">
+                  <Thai24HourSelect
+                    label="เวลาเริ่ม"
+                    value={startTime}
+                    onChange={handleStartTimeChange}
+                    isDark={isDark}
                   />
-                </div>
 
-                {/* Time Selection: Start Time & End Time */}
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <div className="flex items-center justify-between mb-1.5">
-                      <label className={`text-xs font-bold ${headingText} flex items-center gap-1`}>
-                        <Clock className="w-3.5 h-3.5 text-amber-600" />
-                        <span>เวลาเริ่ม</span>
-                      </label>
-                      <span className="text-[11px] font-mono font-extrabold text-amber-600">
-                        {formatThaiTime(startTime)}
-                      </span>
-                    </div>
-                    <input
-                      type="time"
-                      value={startTime}
-                      onChange={(e) => handleStartTimeChange(e.target.value)}
-                      required
-                      className={`${inputClass} font-mono font-bold text-sm`}
-                    />
-                  </div>
-
-                  <div>
-                    <div className="flex items-center justify-between mb-1.5">
-                      <label className={`text-xs font-bold ${headingText} flex items-center gap-1`}>
-                        <Clock className="w-3.5 h-3.5 text-amber-600" />
-                        <span>เวลาสิ้นสุด</span>
-                      </label>
-                      <span className="text-[11px] font-mono font-extrabold text-amber-600">
-                        {formatThaiTime(endTime)}
-                      </span>
-                    </div>
-                    <input
-                      type="time"
-                      value={endTime}
-                      onChange={(e) => setEndTime(e.target.value)}
-                      required
-                      className={`${inputClass} font-mono font-bold text-sm`}
-                    />
-                  </div>
+                  <Thai24HourSelect
+                    label="เวลาสิ้นสุด"
+                    value={endTime}
+                    onChange={(val) => setEndTime(val)}
+                    isDark={isDark}
+                  />
                 </div>
               </div>
 
@@ -424,20 +619,25 @@ export const TabQueue: React.FC = () => {
                   <span>ตารางรายการจองคิว ({visibleQueues.length} คิว)</span>
                 </h3>
                 <p className={`text-xs ${mutedText} mt-0.5`}>
-                  วันที่: <span className={`font-mono font-semibold ${headingText}`}>{filterDate}</span>
+                  วันที่: <span className={`font-bold text-amber-600`}>{formatThaiDateFull(filterDate)}</span>
                 </p>
               </div>
 
               {/* Filter controls */}
               <div className="flex flex-wrap items-center gap-2">
-                <input
-                  type="date"
-                  value={filterDate}
-                  onChange={(e) => setFilterDate(e.target.value)}
-                  className={`px-2.5 py-1.5 rounded-lg border text-xs font-mono focus:outline-none ${
-                    isDark ? 'bg-zinc-950 border-zinc-700 text-zinc-200' : 'bg-slate-50 border-slate-200 text-slate-800'
+                <button
+                  type="button"
+                  onClick={() => {
+                    const d = new Date();
+                    const todayStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+                    setFilterDate(todayStr);
+                  }}
+                  className={`px-2.5 py-1.5 rounded-lg border text-xs font-semibold btn-tactile ${
+                    isDark ? 'bg-zinc-900 border-zinc-700 text-zinc-300 hover:text-white' : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
                   }`}
-                />
+                >
+                  📍 วันนี้
+                </button>
 
                 <select
                   value={filterBarber}
@@ -668,55 +868,33 @@ export const TabQueue: React.FC = () => {
                 </select>
               </div>
 
-              <div>
-                <label className={`block text-xs font-semibold ${mutedText} mb-1.5`}>
-                  วันที่ลา / ปิดคิว
-                </label>
-                <input
-                  type="date"
+              {/* Date & Time Picker for Leave */}
+              <div className={`space-y-3.5 p-4 rounded-2xl border ${
+                isDark ? 'bg-zinc-950/80 border-zinc-800' : 'bg-slate-50/90 border-slate-200'
+              }`}>
+                <ThaiDatePicker
                   value={leaveDate}
-                  onChange={(e) => {
-                    setLeaveDate(e.target.value);
-                    setFilterDate(e.target.value);
+                  onChange={(newD) => {
+                    setLeaveDate(newD);
+                    setFilterDate(newD);
                   }}
-                  required
-                  className={`${inputClass} font-mono`}
+                  label="วันที่ลา / ปิดคิว (วัน / เดือน / ปี พ.ศ.)"
+                  isDark={isDark}
                 />
-              </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <div className="flex items-center justify-between mb-1.5">
-                    <label className={`block text-xs font-semibold ${mutedText}`}>
-                      เวลาเริ่ม
-                    </label>
-                    <span className="text-[11px] font-mono font-bold text-rose-500">
-                      {formatThaiTime(leaveStartTime)}
-                    </span>
-                  </div>
-                  <input
-                    type="time"
+                <div className="grid grid-cols-2 gap-3 pt-1 border-t border-dashed border-slate-200 dark:border-zinc-800">
+                  <Thai24HourSelect
+                    label="เวลาเริ่มปิดคิว"
                     value={leaveStartTime}
-                    onChange={(e) => setLeaveStartTime(e.target.value)}
-                    required
-                    className={`${inputClass} font-mono font-bold`}
+                    onChange={(val) => setLeaveStartTime(val)}
+                    isDark={isDark}
                   />
-                </div>
-                <div>
-                  <div className="flex items-center justify-between mb-1.5">
-                    <label className={`block text-xs font-semibold ${mutedText}`}>
-                      เวลาสิ้นสุด
-                    </label>
-                    <span className="text-[11px] font-mono font-bold text-rose-500">
-                      {formatThaiTime(leaveEndTime)}
-                    </span>
-                  </div>
-                  <input
-                    type="time"
+
+                  <Thai24HourSelect
+                    label="เวลาสิ้นสุด"
                     value={leaveEndTime}
-                    onChange={(e) => setLeaveEndTime(e.target.value)}
-                    required
-                    className={`${inputClass} font-mono font-bold`}
+                    onChange={(val) => setLeaveEndTime(val)}
+                    isDark={isDark}
                   />
                 </div>
               </div>
@@ -747,18 +925,28 @@ export const TabQueue: React.FC = () => {
 
           {/* List of blocked/leaves (7 cols) */}
           <div className={`lg:col-span-7 ${theme.bgCard} rounded-2xl p-5 sm:p-6 space-y-4`}>
-            <div className={`flex items-center justify-between pb-3 border-b ${borderSubtle}`}>
-              <h3 className={`text-base font-bold ${headingText}`}>
-                รายการปิดคิว & วันหยุดช่าง ({visibleQueues.length} รายการ)
-              </h3>
-              <input
-                type="date"
-                value={filterDate}
-                onChange={(e) => setFilterDate(e.target.value)}
-                className={`px-2.5 py-1.5 rounded-lg border text-xs font-mono focus:outline-none ${
-                  isDark ? 'bg-zinc-950 border-zinc-700 text-zinc-200' : 'bg-slate-50 border-slate-200 text-slate-800'
+            <div className={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b ${borderSubtle}`}>
+              <div>
+                <h3 className={`text-base font-bold ${headingText}`}>
+                  รายการปิดคิว & วันหยุดช่าง ({visibleQueues.length} รายการ)
+                </h3>
+                <p className={`text-xs ${mutedText} mt-0.5`}>
+                  วันที่: <span className="font-bold text-rose-500">{formatThaiDateFull(filterDate)}</span>
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  const d = new Date();
+                  const todayStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+                  setFilterDate(todayStr);
+                }}
+                className={`px-2.5 py-1.5 rounded-lg border text-xs font-semibold btn-tactile ${
+                  isDark ? 'bg-zinc-900 border-zinc-700 text-zinc-300 hover:text-white' : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
                 }`}
-              />
+              >
+                📍 วันนี้
+              </button>
             </div>
 
             <div className="space-y-3">
