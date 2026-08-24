@@ -199,7 +199,7 @@ export async function exportReportToPDF({
               .map(
                 (b) => `
               <tr style="border-bottom: 1px solid #e2e8f0;">
-                <td style="padding: 6px 8px; font-weight: bold;">${b.barber.name} (${b.barber.nickname})</td>
+                <td style="padding: 6px 8px; font-weight: bold;">${b.barber.nickname}</td>
                 <td style="padding: 6px 8px; text-align: center; font-family: monospace;">${b.headsCut}</td>
                 <td style="padding: 6px 8px; text-align: right; font-family: monospace;">฿${b.haircutEarned.toLocaleString()}</td>
                 <td style="padding: 6px 8px; text-align: right; font-family: monospace;">฿${b.chemicalEarned.toLocaleString()}</td>

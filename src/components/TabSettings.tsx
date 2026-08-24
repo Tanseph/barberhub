@@ -26,6 +26,12 @@ import {
   Calendar,
   Shield,
   Sparkles,
+  Lock,
+  Unlock,
+  KeyRound,
+  Eye,
+  EyeOff,
+  ArrowLeft,
 } from 'lucide-react';
 import { sounds } from '../utils/sound';
 import { AdminUserManagementSection } from './AdminUserManagementSection';
@@ -53,10 +59,25 @@ export const TabSettings: React.FC = () => {
     isCurrentUserAdmin,
     allUserAccounts,
     openAdminPanel,
+    setActiveTab,
+    showToast,
   } = useApp();
 
   const isDark = theme.isDark ?? true;
   const pendingApprovalsCount = allUserAccounts.filter((u) => u.status === 'pending').length;
+
+  // PIN Lock State
+  const [isUnlocked, setIsUnlocked] = useState(false);
+  const [pinInput, setPinInput] = useState('');
+  const [pinError, setPinError] = useState('');
+  const [showPinInput, setShowPinInput] = useState(false);
+
+  // Change PIN Form State
+  const [currentPinInput, setCurrentPinInput] = useState('');
+  const [newPinInput, setNewPinInput] = useState('');
+  const [confirmPinInput, setConfirmPinInput] = useState('');
+  const [pinChangeError, setPinChangeError] = useState('');
+  const [pinChangeSuccess, setPinChangeSuccess] = useState('');
 
   // Shop Info Form State
   const [shopName, setShopName] = useState(settings.shopName);
@@ -91,6 +112,80 @@ export const TabSettings: React.FC = () => {
   const [prodStock, setProdStock] = useState<string>('');
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Unlock check
+  const handleVerifyPin = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const correctPin = settings.settingsPin || '1234';
+
+    if (pinInput.trim() === correctPin.trim()) {
+      sounds.playSuccess();
+      setIsUnlocked(true);
+      setPinError('');
+      setPinInput('');
+    } else {
+      sounds.playClick();
+      setPinError('รหัสผ่านไม่ถูกต้อง กรุณาลองใหม่อีกครั้ง');
+      setPinInput('');
+    }
+  };
+
+  const handleKeypadPress = (digit: string) => {
+    sounds.playClick();
+    if (pinInput.length < 10) {
+      const nextVal = pinInput + digit;
+      setPinInput(nextVal);
+      setPinError('');
+    }
+  };
+
+  const handleKeypadBackspace = () => {
+    sounds.playClick();
+    setPinInput((prev) => prev.slice(0, -1));
+    setPinError('');
+  };
+
+  const handleKeypadClear = () => {
+    sounds.playClick();
+    setPinInput('');
+    setPinError('');
+  };
+
+  // Change PIN handler
+  const handleChangePinSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setPinChangeError('');
+    setPinChangeSuccess('');
+
+    const correctCurrentPin = settings.settingsPin || '1234';
+    if (currentPinInput.trim() !== correctCurrentPin.trim()) {
+      setPinChangeError('รหัสผ่านปัจจุบันไม่ถูกต้อง');
+      return;
+    }
+
+    if (!newPinInput.trim()) {
+      setPinChangeError('กรุณาระบุรหัสผ่านใหม่');
+      return;
+    }
+
+    if (newPinInput.trim().length < 4) {
+      setPinChangeError('รหัสผ่านใหม่ต้องมีความยาวอย่างน้อย 4 ตัวอักษร');
+      return;
+    }
+
+    if (newPinInput.trim() !== confirmPinInput.trim()) {
+      setPinChangeError('รหัสผ่านใหม่และการยืนยันรหัสผ่านไม่ตรงกัน');
+      return;
+    }
+
+    updateSettings({ settingsPin: newPinInput.trim() });
+    sounds.playSuccess();
+    setPinChangeSuccess('เปลี่ยนรหัสผ่านเข้าหน้าตั้งค่าเรียบร้อยแล้ว');
+    showToast('เปลี่ยนรหัสผ่านสำเร็จ 🔐', 'รหัสผ่านใหม่มีผลใช้งานทันที', 'success');
+    setCurrentPinInput('');
+    setNewPinInput('');
+    setConfirmPinInput('');
+  };
 
   // Handle Logo file upload
   const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -251,6 +346,168 @@ export const TabSettings: React.FC = () => {
     ? 'w-full px-3.5 py-2.5 rounded-xl bg-zinc-950 border border-zinc-700 text-zinc-100 text-sm focus:border-amber-500 focus:outline-none'
     : 'w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 text-sm focus:bg-white focus:border-slate-800 focus:outline-none';
 
+  // PIN Gate Screen
+  if (!isUnlocked) {
+    return (
+      <div className="max-w-md mx-auto px-4 py-10 sm:py-16">
+        <div
+          className={`rounded-3xl border p-6 sm:p-8 shadow-2xl backdrop-blur-xl ${
+            isDark
+              ? 'bg-zinc-900/95 border-zinc-800 shadow-black/60 text-zinc-100'
+              : 'bg-white border-slate-200 shadow-slate-200/80 text-slate-900'
+          }`}
+        >
+          {/* Header */}
+          <div className="text-center mb-6">
+            <div
+              className={`inline-flex items-center justify-center w-16 h-16 rounded-2xl mb-3 shadow-lg ${
+                isDark
+                  ? 'bg-amber-500/15 border border-amber-500/30 text-amber-500 shadow-amber-500/10'
+                  : 'bg-amber-500/15 border border-amber-500/30 text-amber-600 shadow-amber-500/10'
+              }`}
+            >
+              <Lock className="w-8 h-8 stroke-[2.2]" />
+            </div>
+            <h2 className="text-xl font-black tracking-tight mb-1">
+              ระบบความปลอดภัยหน้าตั้งค่า
+            </h2>
+            <p className={`text-xs ${isDark ? 'text-zinc-400' : 'text-slate-500'}`}>
+              กรุณาระบุรหัสผ่านเพื่อเข้าสู่หน้าตั้งค่าและจัดการข้อมูลร้าน
+            </p>
+          </div>
+
+          {/* Form */}
+          <form onSubmit={handleVerifyPin} className="space-y-4">
+            <div>
+              <label className={`block text-xs font-bold mb-2 ${isDark ? 'text-zinc-300' : 'text-slate-700'}`}>
+                รหัสผ่านเข้าหน้าตั้งค่า
+              </label>
+              <div
+                className={`relative flex items-center rounded-2xl border transition-all ${
+                  isDark
+                    ? 'bg-zinc-950 border-zinc-700 focus-within:border-amber-500 focus-within:ring-2 focus-within:ring-amber-500/20'
+                    : 'bg-slate-50 border-slate-300 focus-within:border-slate-800 focus-within:bg-white focus-within:ring-2 focus-within:ring-slate-800/10'
+                }`}
+              >
+                <div className="pl-4 pr-2 text-zinc-400">
+                  <KeyRound className="w-4 h-4" />
+                </div>
+                <input
+                  type={showPinInput ? 'text' : 'password'}
+                  value={pinInput}
+                  onChange={(e) => {
+                    setPinInput(e.target.value);
+                    if (pinError) setPinError('');
+                  }}
+                  placeholder="กรุณากรอกรหัสผ่าน"
+                  autoFocus
+                  className={`w-full py-3.5 pr-10 bg-transparent text-center text-lg font-mono tracking-widest font-bold focus:outline-none ${
+                    isDark ? 'text-zinc-100 placeholder:text-zinc-600 placeholder:text-sm' : 'text-slate-900 placeholder:text-slate-400 placeholder:text-sm'
+                  }`}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPinInput(!showPinInput)}
+                  className="absolute right-3 p-1.5 rounded-lg text-zinc-400 hover:text-zinc-200"
+                >
+                  {showPinInput ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+
+              {pinError && (
+                <div className="mt-2 p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-500 text-xs font-semibold text-center animate-shake">
+                  {pinError}
+                </div>
+              )}
+            </div>
+
+            {/* Visual Numeric Keypad for Mobile / POS Tablet Touchscreens */}
+            <div className="grid grid-cols-3 gap-2 pt-1">
+              {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((digit) => (
+                <button
+                  key={digit}
+                  type="button"
+                  onClick={() => handleKeypadPress(digit)}
+                  className={`py-3 rounded-xl font-mono text-base font-bold transition-all btn-tactile ${
+                    isDark
+                      ? 'bg-zinc-800/80 hover:bg-zinc-700 text-zinc-100 border border-zinc-700/60 shadow-xs'
+                      : 'bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-200 shadow-xs'
+                  }`}
+                >
+                  {digit}
+                </button>
+              ))}
+              <button
+                type="button"
+                onClick={handleKeypadClear}
+                className={`py-3 rounded-xl text-xs font-bold transition-all btn-tactile ${
+                  isDark
+                    ? 'bg-zinc-900 hover:bg-zinc-800 text-zinc-400 border border-zinc-800'
+                    : 'bg-slate-50 hover:bg-slate-100 text-slate-500 border border-slate-200'
+                }`}
+              >
+                ล้าง
+              </button>
+              <button
+                type="button"
+                onClick={() => handleKeypadPress('0')}
+                className={`py-3 rounded-xl font-mono text-base font-bold transition-all btn-tactile ${
+                  isDark
+                    ? 'bg-zinc-800/80 hover:bg-zinc-700 text-zinc-100 border border-zinc-700/60 shadow-xs'
+                    : 'bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-200 shadow-xs'
+                }`}
+              >
+                0
+              </button>
+              <button
+                type="button"
+                onClick={handleKeypadBackspace}
+                className={`py-3 rounded-xl text-xs font-bold transition-all btn-tactile flex items-center justify-center ${
+                  isDark
+                    ? 'bg-zinc-900 hover:bg-zinc-800 text-zinc-400 border border-zinc-800'
+                    : 'bg-slate-50 hover:bg-slate-100 text-slate-500 border border-slate-200'
+                }`}
+              >
+                ⌫ ลบ
+              </button>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="space-y-2 pt-2">
+              <button
+                type="submit"
+                className={`w-full py-3.5 px-4 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all btn-tactile shadow-md ${
+                  isDark
+                    ? 'bg-amber-500 hover:bg-amber-400 text-zinc-950 shadow-amber-500/20'
+                    : 'bg-slate-900 hover:bg-slate-800 text-white'
+                }`}
+              >
+                <Unlock className="w-4 h-4 stroke-[2.2]" />
+                <span>ยืนยันรหัสผ่านเพื่อปลดล็อก</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  sounds.playClick();
+                  setActiveTab('pos');
+                }}
+                className={`w-full py-2.5 px-4 rounded-xl font-semibold text-xs flex items-center justify-center gap-1.5 transition-all border ${
+                  isDark
+                    ? 'bg-zinc-900/60 hover:bg-zinc-800 text-zinc-400 border-zinc-800'
+                    : 'bg-slate-50 hover:bg-slate-100 text-slate-600 border-slate-200'
+                }`}
+              >
+                <ArrowLeft className="w-3.5 h-3.5" />
+                <span>ยกเลิก / กลับหน้าร้าน (POS)</span>
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-8">
       {/* Current User Account & Subscription Info (ย้ายมาจากแถบด้านบน) */}
@@ -314,7 +571,25 @@ export const TabSettings: React.FC = () => {
               </div>
             </div>
 
-            <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+            <div className="flex items-center gap-2 w-full sm:w-auto justify-end flex-wrap">
+              <button
+                type="button"
+                onClick={() => {
+                  sounds.playClick();
+                  setIsUnlocked(false);
+                  showToast('ล็อกหน้าตั้งค่าแล้ว 🔒', 'ต้องระบุรหัสผ่านเมื่อต้องการเข้าใช้งานอีกครั้ง', 'info');
+                }}
+                className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border transition-all ${
+                  isDark
+                    ? 'bg-zinc-800/80 hover:bg-zinc-700 text-amber-400 border-zinc-700'
+                    : 'bg-slate-100 hover:bg-slate-200 text-slate-800 border-slate-200'
+                }`}
+                title="ล็อกหน้าตั้งค่าทันที"
+              >
+                <Lock className="w-3.5 h-3.5" />
+                <span>ล็อกหน้าตั้งค่า</span>
+              </button>
+
               <button
                 type="button"
                 onClick={() => {
@@ -573,7 +848,6 @@ export const TabSettings: React.FC = () => {
                 <div className="flex items-start justify-between">
                   <div>
                     <h4 className={`text-base font-bold ${headingText}`}>{b.nickname}</h4>
-                    <p className={`text-xs ${mutedText}`}>{b.name}</p>
                   </div>
                 </div>
 
@@ -696,72 +970,225 @@ export const TabSettings: React.FC = () => {
         </div>
       </div>
 
-      {/* 5. THEME CUSTOMIZATION STUDIO */}
-      <div className={`${theme.bgCard} rounded-2xl p-5 sm:p-6 space-y-4 transition-all`}>
-        <div className={`flex items-center gap-2 pb-3 border-b ${borderSubtle}`}>
-          <Palette className="w-5 h-5 text-amber-600" />
-          <div>
-            <h3 className={`text-base font-bold ${headingText}`}>
-              5. สตูดิโอธีมสี & สไตล์โปรแกรม (Theme Customizer)
-            </h3>
-            <p className={`text-xs ${mutedText}`}>เลือกบรรยากาศที่เหมาะกับสไตล์ร้านของคุณ</p>
+      {/* 5. THEME CUSTOMIZATION STUDIO (WHITE EDITIONS) */}
+      <div className={`${theme.bgCard} rounded-2xl p-5 sm:p-6 space-y-5 transition-all`}>
+        <div className={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b ${borderSubtle}`}>
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center">
+              <Palette className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className={`text-base font-bold ${headingText}`}>
+                  5. สตูดิโอธีมสีสว่าง & สไตล์โปรแกรม (White Edition Themes)
+                </h3>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                  8 สไตล์โทนขาว
+                </span>
+              </div>
+              <p className={`text-xs ${mutedText}`}>
+                เลือกเฉดสีโทนสว่างและสะอาดตา (Light/White Mode) เพื่อเปลี่ยนบรรยากาศของระบบตามเอกลักษณ์ของร้าน
+              </p>
+            </div>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {Object.values(THEMES).map((t) => {
-            const isCurrent = settings.themeId === t.id;
+        {/* 8 Curated Light Themes Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          {(
+            [
+              'clean-minimal',
+              'warm-amber-gold',
+              'royal-sapphire',
+              'nordic-sage',
+              'rose-elegance',
+              'vintage-terracotta',
+              'violet-luxury',
+              'japanese-zen',
+            ] as ThemeKey[]
+          ).map((themeKeyId) => {
+            const t = THEMES[themeKeyId];
+            if (!t) return null;
+            const isCurrent = settings.themeId === t.id || (settings.themeId === 'professional-polish' && t.id === 'clean-minimal');
+
             return (
               <div
                 key={t.id}
                 onClick={() => {
                   sounds.playClick();
-                  setThemeKey(t.id as ThemeKey);
+                  setThemeKey(t.id);
+                  showToast('เปลี่ยนธีมร้านค้าแล้ว 🎨', `ใช้งานธีม "${t.name}" เรียบร้อย`, 'success', '✨');
                 }}
-                className={`p-4 rounded-xl border cursor-pointer transition-all duration-200 btn-tactile ${
+                className={`relative flex flex-col justify-between p-4 rounded-2xl border-2 cursor-pointer transition-all duration-200 btn-tactile ${
                   isCurrent
-                    ? isDark
-                      ? 'border-amber-500 bg-amber-500/10 shadow-md ring-1 ring-amber-500'
-                      : 'border-slate-900 bg-slate-900 text-white shadow-sm ring-1 ring-slate-900'
-                    : isDark
-                    ? 'border-zinc-800 bg-zinc-950/80 hover:border-zinc-700'
-                    : 'border-slate-200 bg-slate-50 hover:bg-white hover:border-slate-300'
+                    ? 'border-slate-900 bg-white shadow-md ring-2 ring-slate-900/10'
+                    : 'border-slate-200/90 bg-slate-50/70 hover:bg-white hover:border-slate-300 hover:shadow-sm'
                 }`}
               >
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-2">
-                    <div
-                      className="w-4 h-4 rounded-full border border-black/10 shadow-2xs"
-                      style={{ backgroundColor: t.colorSwatch }}
-                    />
-                    <h4 className={`text-sm font-bold ${isCurrent && !isDark ? 'text-white' : headingText}`}>{t.name}</h4>
+                <div>
+                  {/* Header Row: Swatch & Name */}
+                  <div className="flex items-start justify-between gap-2 mb-2">
+                    <div className="flex items-center gap-2">
+                      <div
+                        className="w-5 h-5 rounded-full border-2 border-white shadow-xs shrink-0"
+                        style={{ backgroundColor: t.colorSwatch }}
+                      />
+                      <div>
+                        <h4 className="text-sm font-bold text-slate-900 leading-tight">
+                          {t.name}
+                        </h4>
+                        <p className="text-[10px] text-slate-400 font-medium">
+                          {t.nameEn}
+                        </p>
+                      </div>
+                    </div>
+
+                    {isCurrent && (
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-900 text-white flex items-center gap-1 shrink-0 shadow-xs">
+                        <Check className="w-3 h-3 stroke-[3]" />
+                        <span>ใช้อยู่</span>
+                      </span>
+                    )}
                   </div>
-                  {isCurrent && (
-                    <span className={`text-xs font-bold flex items-center gap-1 ${isDark ? 'text-amber-400' : 'text-amber-300'}`}>
-                      <Check className="w-3.5 h-3.5 stroke-[3]" />
-                      <span>ใช้งานอยู่</span>
+
+                  {/* Badge */}
+                  <div className="mb-2.5">
+                    <span className="inline-block px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200/80">
+                      {t.badge}
                     </span>
-                  )}
+                  </div>
+
+                  {/* Description */}
+                  <p className="text-xs text-slate-600 leading-relaxed line-clamp-2 mb-3">
+                    {t.description}
+                  </p>
                 </div>
-                <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-medium mb-2 ${
-                  isCurrent && !isDark
-                    ? 'bg-white/20 text-white'
-                    : isDark
-                    ? 'bg-zinc-800 text-zinc-300'
-                    : 'bg-slate-200 text-slate-700'
-                }`}>
-                  {t.badge}
-                </span>
-                <p className={`text-xs leading-relaxed ${isCurrent && !isDark ? 'text-slate-300' : mutedText}`}>
-                  {t.description}
-                </p>
+
+                {/* Color Palette Preview Ribbon */}
+                <div className="pt-2.5 border-t border-slate-200/80">
+                  <div className="flex items-center justify-between text-[11px] font-semibold text-slate-500 mb-1.5">
+                    <span>ตัวอย่างสีธีม</span>
+                    <span className="font-mono text-[10px] text-slate-400">Light UI</span>
+                  </div>
+                  <div className="grid grid-cols-4 gap-1.5 h-6 rounded-lg p-1 bg-slate-100 border border-slate-200/80">
+                    <div
+                      className="rounded shadow-2xs"
+                      style={{ backgroundColor: t.colorSwatch }}
+                      title="สีหลัก (Primary Accent)"
+                    />
+                    <div
+                      className="rounded bg-white border border-slate-200/80 shadow-2xs"
+                      title="การ์ดพื้นหลัง (Surface White)"
+                    />
+                    <div
+                      className="rounded shadow-2xs"
+                      style={{ backgroundColor: `${t.colorSwatch}25` }}
+                      title="สีอ่อน (Soft Badge)"
+                    />
+                    <div
+                      className="rounded shadow-2xs"
+                      style={{ backgroundColor: '#0f172a' }}
+                      title="ตัวอักษรเข้มชัด (Dark Typography)"
+                    />
+                  </div>
+                </div>
               </div>
             );
           })}
         </div>
       </div>
 
-      {/* 6. SYSTEM RESET & FACTORY RESET */}
+      {/* 6. SETTINGS PIN CODE MANAGEMENT */}
+      <div className={`${theme.bgCard} rounded-2xl p-5 sm:p-6 space-y-4 transition-all`}>
+        <div className={`flex items-center justify-between pb-3 border-b ${borderSubtle}`}>
+          <div className="flex items-center gap-2">
+            <Shield className="w-5 h-5 text-amber-600" />
+            <div>
+              <h3 className={`text-base font-bold ${headingText}`}>
+                6. ความปลอดภัย & รหัสผ่านหน้าตั้งค่า (Settings PIN Code)
+              </h3>
+              <p className={`text-xs ${mutedText}`}>
+                กำหนดรหัสผ่านสำหรับเข้าหน้าตั้งค่าร้าน เพื่อป้องกันไม่ให้บุคคลภายนอกหรือพนักงานแก้ไขข้อมูลร้านค้า
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <form onSubmit={handleChangePinSubmit} className="space-y-4 max-w-xl">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <label className={`block text-xs font-semibold mb-1 ${headingText}`}>
+                รหัสผ่านปัจจุบัน <span className="text-rose-500">*</span>
+              </label>
+              <input
+                type="password"
+                value={currentPinInput}
+                onChange={(e) => setCurrentPinInput(e.target.value)}
+                placeholder="กรอกรหัสปัจจุบัน"
+                className={inputClass}
+                required
+              />
+            </div>
+
+            <div>
+              <label className={`block text-xs font-semibold mb-1 ${headingText}`}>
+                รหัสผ่านใหม่ <span className="text-rose-500">*</span>
+              </label>
+              <input
+                type="password"
+                value={newPinInput}
+                onChange={(e) => setNewPinInput(e.target.value)}
+                placeholder="รหัสใหม่ (อย่างน้อย 4 ตัว)"
+                className={inputClass}
+                required
+              />
+            </div>
+
+            <div>
+              <label className={`block text-xs font-semibold mb-1 ${headingText}`}>
+                ยืนยันรหัสใหม่ <span className="text-rose-500">*</span>
+              </label>
+              <input
+                type="password"
+                value={confirmPinInput}
+                onChange={(e) => setConfirmPinInput(e.target.value)}
+                placeholder="ยืนยันรหัสใหม่อีกครั้ง"
+                className={inputClass}
+                required
+              />
+            </div>
+          </div>
+
+          {pinChangeError && (
+            <div className="p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-500 text-xs font-semibold">
+              ⚠️ {pinChangeError}
+            </div>
+          )}
+
+          {pinChangeSuccess && (
+            <div className="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-500 text-xs font-semibold flex items-center gap-1.5">
+              <Check className="w-4 h-4" />
+              <span>{pinChangeSuccess}</span>
+            </div>
+          )}
+
+          <div className="flex items-center gap-2 pt-1">
+            <button
+              type="submit"
+              className={`px-5 py-2.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all btn-tactile ${
+                isDark
+                  ? 'bg-amber-500 hover:bg-amber-400 text-zinc-950 shadow-md shadow-amber-500/20'
+                  : 'bg-slate-900 hover:bg-slate-800 text-white shadow-sm'
+              }`}
+            >
+              <KeyRound className="w-3.5 h-3.5" />
+              <span>บันทึกรหัสผ่านใหม่</span>
+            </button>
+          </div>
+        </form>
+      </div>
+
+      {/* 7. SYSTEM RESET & FACTORY RESET */}
       <div className="space-y-4">
         {/* Factory Reset (Wipe All Data) */}
         <div className={`p-5 sm:p-6 rounded-2xl border-2 transition-all flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 ${

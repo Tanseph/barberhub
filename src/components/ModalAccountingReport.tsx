@@ -433,7 +433,7 @@ export const ModalAccountingReport: React.FC<ModalAccountingReportProps> = ({
                   {barberSummaries.map(({ barber, headsCut, haircutEarned, chemicalEarned, productEarned, tipEarned, totalEarned, shopEarned }) => (
                     <tr key={barber.id}>
                       <td className="py-2.5 px-3 font-semibold">
-                        {barber.name} ({barber.nickname})
+                        {barber.nickname}
                       </td>
                       <td className="py-2.5 px-2 text-center font-mono">{headsCut}</td>
                       <td className="py-2.5 px-3 text-right font-mono">{settings.currencySymbol}{haircutEarned.toLocaleString()}</td>

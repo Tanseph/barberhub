@@ -325,6 +325,11 @@ export const TabPOS: React.FC = () => {
               </p>
               <p className={`text-sm font-semibold ${headingText}`}>
                 คุณ {pendingQueueToPos.customerName} ({pendingQueueToPos.serviceType || 'บริการตัดผม'})
+                {pendingQueueToPos.startTime && (
+                  <span className="ml-2 font-mono text-xs font-bold text-amber-600 bg-amber-500/10 px-2 py-0.5 rounded">
+                    เวลา {pendingQueueToPos.startTime.replace(':', '.')}{pendingQueueToPos.endTime ? ` - ${pendingQueueToPos.endTime.replace(':', '.')}` : ''} น.
+                  </span>
+                )}
               </p>
             </div>
           </div>
@@ -387,10 +392,7 @@ export const TabPOS: React.FC = () => {
                   >
                     <div className="min-w-0 flex-1">
                       <p className={`text-sm font-bold truncate ${isSelected && !isDark ? 'text-white' : headingText}`}>
-                        {barber.nickname}
-                      </p>
-                      <p className={`text-xs truncate ${isSelected && !isDark ? 'text-slate-300' : mutedText}`}>
-                        {barber.name}
+                        {barber.avatar ? `${barber.avatar} ` : ''}{barber.nickname}
                       </p>
                     </div>
                     {isSelected && (

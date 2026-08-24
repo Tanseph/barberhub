@@ -994,7 +994,6 @@ export const TabDashboard: React.FC = () => {
                 <tr key={barber.id} className={tableRowBg}>
                   <td className="py-3 px-4 font-semibold">
                     <span>{barber.nickname}</span>
-                    <span className={`text-[10px] ${mutedText} hidden sm:inline ml-1.5`}>({barber.name})</span>
                   </td>
                   <td className="py-3 px-3 text-center font-mono">{headsCut}</td>
                   <td className="py-3 px-3 text-right font-mono">{settings.currencySymbol}{haircutEarned.toLocaleString()}</td>

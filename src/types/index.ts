@@ -181,6 +181,14 @@ export interface QueueBooking {
 }
 
 export type ThemeKey = 
+  | 'clean-minimal'
+  | 'warm-amber-gold'
+  | 'royal-sapphire'
+  | 'nordic-sage'
+  | 'rose-elegance'
+  | 'vintage-terracotta'
+  | 'violet-luxury'
+  | 'japanese-zen'
   | 'professional-polish'
   | 'luxury-gold' 
   | 'charcoal-classic' 
@@ -230,4 +238,5 @@ export interface ShopSettings {
   queueSlotDuration: number; // 30, 45, 60, 90 mins
   themeId: ThemeKey;
   receiptFooterMsg: string;
+  settingsPin?: string; // Default '1234'
 }

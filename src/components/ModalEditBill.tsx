@@ -74,7 +74,7 @@ export const ModalEditBill: React.FC = () => {
 
     updateSaleBill(editingBill.id, {
       barberId,
-      barberName: selectedBarber?.name || editingBill.barberName,
+      barberName: selectedBarber?.nickname || selectedBarber?.name || editingBill.barberName,
       customerName: customerName.trim(),
       customerPhone: customerPhone.trim(),
       haircutFee: Number(haircutFee) || 0,
@@ -138,7 +138,7 @@ export const ModalEditBill: React.FC = () => {
             >
               {barbers.map((b) => (
                 <option key={b.id} value={b.id}>
-                  {b.avatar} {b.name} ({b.nickname})
+                  {b.avatar ? `${b.avatar} ` : ''}{b.nickname}
                 </option>
               ))}
             </select>

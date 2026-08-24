@@ -14,6 +14,21 @@ import {
 } from 'lucide-react';
 import { sounds } from '../utils/sound';
 
+// Helper: Format time string (e.g. "13:00", "13.00") to Thai format "13.00 น."
+export const formatThaiTime = (timeStr?: string, withUnit: boolean = true): string => {
+  if (!timeStr) return '-';
+  const clean = timeStr.trim().replace(':', '.');
+  return withUnit ? `${clean} น.` : clean;
+};
+
+// Helper: Format time range (e.g. "13:00", "13:45") to "13.00 - 13.45 น."
+export const formatThaiTimeRange = (start?: string, end?: string): string => {
+  if (!start) return '-';
+  const s = start.replace(':', '.');
+  const e = end ? end.replace(':', '.') : '';
+  return e ? `${s} - ${e} น.` : `${s} น.`;
+};
+
 export const TabQueue: React.FC = () => {
   const {
     barbers,
@@ -27,7 +42,7 @@ export const TabQueue: React.FC = () => {
     openConfirm,
   } = useApp();
 
-  const isDark = theme.isDark ?? true;
+  const isDark = theme.isDark ?? false;
 
   // Active sub-view: 'booking' (จองคิว & รายการจอง) vs 'leave' (ปิดคิว / ลางาน)
   const [subTab, setSubTab] = useState<'booking' | 'leave'>('booking');
@@ -42,6 +57,7 @@ export const TabQueue: React.FC = () => {
       setSelectedBarberId(barbers[0].id);
     }
   }, [barbers, selectedBarberId]);
+
   const [bookingDate, setBookingDate] = useState<string>(() => {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -50,7 +66,8 @@ export const TabQueue: React.FC = () => {
   // Calculate end time helper based on slot duration minutes
   const calculateEndTime = (start: string, durationMinutes: number = settings.queueSlotDuration || 45): string => {
     try {
-      const [h, m] = start.split(':').map(Number);
+      const normalized = start.replace('.', ':');
+      const [h, m] = normalized.split(':').map(Number);
       if (isNaN(h) || isNaN(m)) return '10:45';
       const totalMinutes = h * 60 + m + (durationMinutes || 45);
       const endH = Math.floor(totalMinutes / 60) % 24;
@@ -61,11 +78,11 @@ export const TabQueue: React.FC = () => {
     }
   };
 
+  // Time States (24h internal "HH:mm")
   const [startTime, setStartTime] = useState<string>('10:00');
   const [endTime, setEndTime] = useState<string>(() => calculateEndTime('10:00', settings.queueSlotDuration || 45));
   const [customerName, setCustomerName] = useState<string>('');
   const [customerPhone, setCustomerPhone] = useState<string>('');
-  const [notes, setNotes] = useState<string>('');
 
   // Keep end time synced when slot duration setting changes
   useEffect(() => {
@@ -91,11 +108,14 @@ export const TabQueue: React.FC = () => {
   const [filterBarber, setFilterBarber] = useState<string>('all');
   const [filterStatus, setFilterStatus] = useState<string>('all');
 
-  // Helper to calculate end time when start time changes based on queueSlotDuration
+  // Helper when start time changes
   const handleStartTimeChange = (start: string) => {
-    setStartTime(start);
-    const calculated = calculateEndTime(start, settings.queueSlotDuration || 45);
-    setEndTime(calculated);
+    const standard = start.replace('.', ':');
+    setStartTime(standard);
+    if (standard) {
+      const calculated = calculateEndTime(standard, settings.queueSlotDuration || 45);
+      setEndTime(calculated);
+    }
   };
 
   // Submit Queue Booking
@@ -107,14 +127,13 @@ export const TabQueue: React.FC = () => {
 
     addQueueBooking({
       barberId: selectedBarberId,
-      barberName: barberObj ? barberObj.name : 'ช่างประจำร้าน',
+      barberName: barberObj ? (barberObj.nickname || barberObj.name) : 'ช่างประจำร้าน',
       date: bookingDate,
       startTime,
       endTime,
       customerName: customerName.trim(),
       customerPhone: customerPhone.trim() || '-',
       serviceType: 'บริการตัดผม/ทั่วไป',
-      notes: notes.trim() || undefined,
       status: 'waiting',
       isLeaveOrBlocked: false,
     });
@@ -122,9 +141,8 @@ export const TabQueue: React.FC = () => {
     // Reset customer fields
     setCustomerName('');
     setCustomerPhone('');
-    setNotes('');
 
-    // Advance start time by slot duration
+    // Advance start time
     handleStartTimeChange(endTime);
   };
 
@@ -170,7 +188,7 @@ export const TabQueue: React.FC = () => {
   const handleDeleteQueue = (queue: QueueBooking) => {
     openConfirm({
       title: 'ต้องการยกเลิกคิวนี้ใช่หรือไม่? 🗑️',
-      message: `คุณกำลังจะลบคิว ${queue.queueNumber} ของคุณ ${queue.customerName} (เวลา ${queue.startTime} - ${queue.endTime} น.)`,
+      message: `คุณกำลังจะลบคิว ${queue.queueNumber} ของคุณ ${queue.customerName} (เวลา ${formatThaiTimeRange(queue.startTime, queue.endTime)})`,
       confirmText: 'ลบคิวเลย',
       cancelText: 'เก็บไว้',
       confirmColor: 'bg-rose-600 hover:bg-rose-500',
@@ -197,11 +215,11 @@ export const TabQueue: React.FC = () => {
             <div className="flex items-center gap-2">
               <CalendarDays className="w-5 h-5 text-amber-600" />
               <h2 className={`text-lg font-bold ${headingText}`}>
-                ระบบจัดการคิว & ตารางงานช่าง
+                ระบบจัดการคิว & ตารางงานช่าง (Thai 24-Hour Queue)
               </h2>
             </div>
             <p className={`text-xs ${mutedText} mt-0.5`}>
-              กำหนดเวลาจองคิวล่วงหน้า ({settings.queueSlotDuration} นาที/คิว) และบันทึกวันหยุดช่าง
+              กำหนดเวลาจองคิวล่วงหน้าแบบเวลาไทย 24 ชั่วโมง ({settings.queueSlotDuration} นาที/คิว) และบันทึกวันหยุดช่าง
             </p>
           </div>
 
@@ -246,11 +264,6 @@ export const TabQueue: React.FC = () => {
                 <Plus className="w-4 h-4 text-amber-600" />
                 <span>ลงทะเบียนจองคิวใหม่</span>
               </span>
-              <span className={`text-xs px-2 py-0.5 rounded font-mono ${
-                isDark ? 'bg-zinc-800 text-zinc-400' : 'bg-slate-100 text-slate-600'
-              }`}>
-                {settings.queueSlotDuration} นาที/คิว
-              </span>
             </div>
 
             <form onSubmit={handleCreateBooking} className="space-y-4">
@@ -289,10 +302,7 @@ export const TabQueue: React.FC = () => {
                           }`}
                         >
                           <div className="min-w-0">
-                            <p className="text-xs font-bold truncate">{b.nickname}</p>
-                            <p className={`text-[10px] truncate ${isSel && !isDark ? 'text-slate-300' : mutedText}`}>
-                              {b.name}
-                            </p>
+                            <p className="text-xs font-bold truncate">{b.avatar ? `${b.avatar} ` : ''}{b.nickname}</p>
                           </div>
                         </button>
                       );
@@ -301,9 +311,9 @@ export const TabQueue: React.FC = () => {
                 )}
               </div>
 
-              {/* Date & Times */}
-              <div className={`space-y-3 p-3.5 rounded-xl border ${
-                isDark ? 'bg-zinc-950/80 border-zinc-800' : 'bg-slate-50 border-slate-200'
+              {/* Date & Time Picker */}
+              <div className={`space-y-3.5 p-4 rounded-2xl border ${
+                isDark ? 'bg-zinc-950/80 border-zinc-800' : 'bg-slate-50/90 border-slate-200'
               }`}>
                 <div>
                   <label className={`block text-xs font-semibold ${mutedText} mb-1`}>
@@ -321,29 +331,43 @@ export const TabQueue: React.FC = () => {
                   />
                 </div>
 
-                <div className="grid grid-cols-2 gap-2">
+                {/* Time Selection: Start Time & End Time */}
+                <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className={`block text-[11px] font-semibold ${mutedText} mb-1`}>
-                      เวลาเริ่มคิว
-                    </label>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className={`text-xs font-bold ${headingText} flex items-center gap-1`}>
+                        <Clock className="w-3.5 h-3.5 text-amber-600" />
+                        <span>เวลาเริ่ม</span>
+                      </label>
+                      <span className="text-[11px] font-mono font-extrabold text-amber-600">
+                        {formatThaiTime(startTime)}
+                      </span>
+                    </div>
                     <input
                       type="time"
                       value={startTime}
                       onChange={(e) => handleStartTimeChange(e.target.value)}
                       required
-                      className={`${inputClass} font-mono font-bold text-emerald-600`}
+                      className={`${inputClass} font-mono font-bold text-sm`}
                     />
                   </div>
+
                   <div>
-                    <label className={`block text-[11px] font-semibold ${mutedText} mb-1`}>
-                      เวลาสิ้นสุด (อัตโนมัติ)
-                    </label>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className={`text-xs font-bold ${headingText} flex items-center gap-1`}>
+                        <Clock className="w-3.5 h-3.5 text-amber-600" />
+                        <span>เวลาสิ้นสุด</span>
+                      </label>
+                      <span className="text-[11px] font-mono font-extrabold text-amber-600">
+                        {formatThaiTime(endTime)}
+                      </span>
+                    </div>
                     <input
                       type="time"
                       value={endTime}
                       onChange={(e) => setEndTime(e.target.value)}
                       required
-                      className={`${inputClass} font-mono`}
+                      className={`${inputClass} font-mono font-bold text-sm`}
                     />
                   </div>
                 </div>
@@ -373,24 +397,10 @@ export const TabQueue: React.FC = () => {
                     type="tel"
                     value={customerPhone}
                     onChange={(e) => setCustomerPhone(e.target.value)}
-                    placeholder="กรุณาระบุเบอร์โทรศัพท์ลูกค้า"
+                    placeholder="กรุณาระบุเบอร์โทรศัพท์ลูกค้า (ไม่บังคับ)"
                     className={`${inputClass} font-mono`}
                   />
                 </div>
-              </div>
-
-              {/* Notes */}
-              <div>
-                <label className={`block text-xs font-semibold ${mutedText} mb-1`}>
-                  หมายเหตุเพิ่มเติม
-                </label>
-                <input
-                  type="text"
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  placeholder="เช่น มากับเพื่อน, ขอผ้าเย็น, ตรงเวลา"
-                  className={inputClass}
-                />
               </div>
 
               {/* Submit Button */}
@@ -399,7 +409,7 @@ export const TabQueue: React.FC = () => {
                 className={`w-full py-3.5 px-4 rounded-xl text-sm font-bold flex items-center justify-center gap-2 ${theme.primary} btn-tactile shadow-md`}
               >
                 <CheckCircle2 className="w-4 h-4" />
-                <span>บันทึกการจองคิว 💈</span>
+                <span>บันทึกการจองคิว 💈 ({formatThaiTimeRange(startTime, endTime)})</span>
               </button>
             </form>
           </div>
@@ -501,16 +511,16 @@ export const TabQueue: React.FC = () => {
                       <div className={`flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2.5 border-b ${
                         isDark ? 'border-zinc-800/80' : 'border-slate-100'
                       }`}>
-                        {/* Time & Queue Number */}
+                        {/* Time & Queue Number (Thai 24H Format) */}
                         <div className="flex items-center gap-3">
                           <span className={`px-2.5 py-1 rounded-lg font-mono font-bold text-xs ${
                             isDark ? 'bg-zinc-900 border border-zinc-700 text-amber-400' : 'bg-slate-900 text-white'
                           }`}>
                             {q.queueNumber}
                           </span>
-                          <span className={`font-mono text-sm font-bold ${headingText} flex items-center gap-1`}>
+                          <span className={`font-mono text-sm font-bold ${headingText} flex items-center gap-1.5`}>
                             <Clock className={`w-3.5 h-3.5 ${mutedText}`} />
-                            <span>{q.startTime} - {q.endTime} น.</span>
+                            <span>{formatThaiTimeRange(q.startTime, q.endTime)}</span>
                           </span>
                         </div>
 
@@ -652,7 +662,7 @@ export const TabQueue: React.FC = () => {
                 >
                   {barbers.map((b) => (
                     <option key={b.id} value={b.id}>
-                      {b.nickname} - {b.name}
+                      {b.avatar ? `${b.avatar} ` : ''}{b.nickname}
                     </option>
                   ))}
                 </select>
@@ -676,25 +686,37 @@ export const TabQueue: React.FC = () => {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className={`block text-xs font-semibold ${mutedText} mb-1.5`}>
-                    ตั้งแต่เวลา
-                  </label>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className={`block text-xs font-semibold ${mutedText}`}>
+                      เวลาเริ่ม
+                    </label>
+                    <span className="text-[11px] font-mono font-bold text-rose-500">
+                      {formatThaiTime(leaveStartTime)}
+                    </span>
+                  </div>
                   <input
                     type="time"
                     value={leaveStartTime}
                     onChange={(e) => setLeaveStartTime(e.target.value)}
-                    className={`${inputClass} font-mono`}
+                    required
+                    className={`${inputClass} font-mono font-bold`}
                   />
                 </div>
                 <div>
-                  <label className={`block text-xs font-semibold ${mutedText} mb-1.5`}>
-                    ถึงเวลา
-                  </label>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className={`block text-xs font-semibold ${mutedText}`}>
+                      เวลาสิ้นสุด
+                    </label>
+                    <span className="text-[11px] font-mono font-bold text-rose-500">
+                      {formatThaiTime(leaveEndTime)}
+                    </span>
+                  </div>
                   <input
                     type="time"
                     value={leaveEndTime}
                     onChange={(e) => setLeaveEndTime(e.target.value)}
-                    className={`${inputClass} font-mono`}
+                    required
+                    className={`${inputClass} font-mono font-bold`}
                   />
                 </div>
               </div>
@@ -718,7 +740,7 @@ export const TabQueue: React.FC = () => {
                 className="w-full py-3.5 px-4 rounded-xl text-sm font-bold bg-rose-600 hover:bg-rose-500 text-white shadow-xs transition-all btn-tactile flex items-center justify-center gap-2"
               >
                 <UserX className="w-4 h-4" />
-                <span>บันทึกปิดคิว / บล็อกเวลา</span>
+                <span>บันทึกปิดคิว / บล็อกเวลา ({formatThaiTimeRange(leaveStartTime, leaveEndTime)})</span>
               </button>
             </form>
           </div>
@@ -759,8 +781,8 @@ export const TabQueue: React.FC = () => {
                         <span className="px-2 py-0.5 rounded bg-rose-500/20 text-rose-600 font-bold text-xs">
                           {item.barberName}
                         </span>
-                        <span className={`font-mono text-xs ${headingText}`}>
-                          {item.startTime} - {item.endTime} น.
+                        <span className={`font-mono text-xs font-bold ${headingText}`}>
+                          {formatThaiTimeRange(item.startTime, item.endTime)}
                         </span>
                       </div>
                       <p className={`text-xs mt-1.5 ${isDark ? 'text-zinc-300' : 'text-slate-700'}`}>
@@ -787,3 +809,4 @@ export const TabQueue: React.FC = () => {
     </div>
   );
 };
+

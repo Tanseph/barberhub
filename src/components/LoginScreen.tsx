@@ -3,12 +3,7 @@ import {
   Scissors,
   Mail,
   LogIn,
-  ShieldCheck,
   Cloud,
-  Store,
-  Sparkles,
-  ArrowRight,
-  CheckCircle2,
 } from 'lucide-react';
 import { sounds } from '../utils/sound';
 
@@ -26,12 +21,6 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
   const [email, setEmail] = useState<string>(currentEmail || '');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string>('');
-
-  const quickEmails = [
-    { email: 'kunakorn.k66@gmail.com', label: 'สาขาหลัก (Owner)', desc: 'ข้อมูลร้านสาขาหลัก' },
-    { email: 'branch1@barberpos.com', label: 'สาขา 1 (สยาม)', desc: 'ฐานข้อมูลสาขา 1' },
-    { email: 'branch2@barberpos.com', label: 'สาขา 2 (ทองหล่อ)', desc: 'ฐานข้อมูลสาขา 2' },
-  ];
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -55,12 +44,6 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
       onLogin(cleanEmail);
       setIsSubmitting(false);
     }, 400);
-  };
-
-  const handleQuickSelect = (quickEmail: string) => {
-    sounds.playClick();
-    setEmail(quickEmail);
-    setErrorMsg('');
   };
 
   return (
@@ -101,7 +84,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
           </div>
 
           {/* Form */}
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-5">
             <div>
               <label
                 htmlFor="user-email-input"
@@ -109,7 +92,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                   themeDark ? 'text-zinc-200' : 'text-slate-700'
                 }`}
               >
-                อีเมลร้านค้า (Cloud Workspace) <span className="text-rose-500">*</span>
+                อีเมลร้านค้า (Email) <span className="text-rose-500">*</span>
               </label>
               <div className={`relative flex items-center rounded-2xl border transition-all ${
                 themeDark
@@ -166,44 +149,6 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
               )}
             </button>
           </form>
-
-          {/* Quick email presets */}
-          <div className="mt-6 pt-5 border-t border-zinc-800/50 dark:border-zinc-800">
-            <p className={`text-[11px] font-bold uppercase tracking-wider mb-2.5 ${
-              themeDark ? 'text-zinc-500' : 'text-slate-400'
-            }`}>
-              หรือเลือกบัญชีตัวอย่างสำหรับทดสอบระบบ:
-            </p>
-            <div className="space-y-1.5">
-              {quickEmails.map((item) => (
-                <button
-                  key={item.email}
-                  type="button"
-                  onClick={() => handleQuickSelect(item.email)}
-                  className={`w-full text-left p-2.5 rounded-xl border text-xs flex items-center justify-between transition-all ${
-                    email === item.email
-                      ? themeDark
-                        ? 'bg-amber-500/10 border-amber-500/40 text-amber-400'
-                        : 'bg-amber-50 border-amber-300 text-amber-900'
-                      : themeDark
-                      ? 'bg-zinc-950/40 border-zinc-800/60 text-zinc-300 hover:bg-zinc-800/60'
-                      : 'bg-slate-50 border-slate-200/80 text-slate-700 hover:bg-slate-100'
-                  }`}
-                >
-                  <div className="flex items-center gap-2">
-                    <Store className="w-3.5 h-3.5 opacity-70" />
-                    <div>
-                      <p className="font-bold">{item.label}</p>
-                      <p className={`text-[10px] ${themeDark ? 'text-zinc-500' : 'text-slate-400'}`}>
-                        {item.email}
-                      </p>
-                    </div>
-                  </div>
-                  <ArrowRight className="w-3.5 h-3.5 opacity-50" />
-                </button>
-              ))}
-            </div>
-          </div>
 
           {/* Security & Multi-tenant Info */}
           <div className={`mt-6 p-3.5 rounded-2xl border text-xs space-y-1.5 ${

@@ -412,6 +412,7 @@ export const CLEAN_SETTINGS: ShopSettings = {
   queueSlotDuration: 45,
   themeId: 'professional-polish',
   receiptFooterMsg: 'ขอบพระคุณที่ไว้วางใจใช้บริการ 💈✂️',
+  settingsPin: '1234',
 };
 
 export const INITIAL_SETTINGS: ShopSettings = {
@@ -428,6 +429,7 @@ export const INITIAL_SETTINGS: ShopSettings = {
   queueSlotDuration: 45,
   themeId: 'professional-polish',
   receiptFooterMsg: 'ขอบพระคุณที่ไว้วางใจใช้บริการ หวังว่าจะได้ดูแลคุณลูกค้าในครั้งถัดไปครับ 💈✂️',
+  settingsPin: '1234',
 };
 
 // Generate realistic initial bills for 2026-08-18 and past couple days

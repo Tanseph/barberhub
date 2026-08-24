@@ -245,7 +245,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   const [activeTab, setActiveTabState] = useState<TabType>('pos');
 
-  const theme: ThemeConfig = THEMES[settings.themeId] || THEMES['luxury-gold'];
+  const theme: ThemeConfig = THEMES[settings.themeId] || THEMES['clean-minimal'] || THEMES['professional-polish'];
 
   // 2. Barbers
   const [barbers, setBarbers] = useState<Barber[]>(() => {
