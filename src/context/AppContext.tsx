@@ -278,7 +278,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     if (storageKeys) {
       try {
         const saved = localStorage.getItem(storageKeys.BILLS);
-        if (saved) return JSON.parse(saved);
+        if (saved) {
+          const parsed: SaleBill[] = JSON.parse(saved);
+          return parsed.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0) || b.billNumber.localeCompare(a.billNumber));
+        }
       } catch (e) {
         console.error(e);
       }
@@ -381,7 +384,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       setProducts(savedProducts ? JSON.parse(savedProducts) : []);
 
       const savedBills = localStorage.getItem(keys.BILLS);
-      setBills(savedBills ? JSON.parse(savedBills) : []);
+      setBills(
+        savedBills
+          ? (JSON.parse(savedBills) as SaleBill[]).sort(
+              (a, b) => (b.timestamp || 0) - (a.timestamp || 0) || b.billNumber.localeCompare(a.billNumber)
+            )
+          : []
+      );
 
       const savedExpenses = localStorage.getItem(keys.EXPENSES);
       setExpenses(savedExpenses ? JSON.parse(savedExpenses) : []);

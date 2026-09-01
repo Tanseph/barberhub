@@ -4,6 +4,7 @@ import { SaleBill, Barber } from '../types';
 import { X, Printer, Download, FileText, CheckCircle2, FileDown, Loader2 } from 'lucide-react';
 import { sounds } from '../utils/sound';
 import { exportReportToPDF } from '../utils/pdfExport';
+import { getBillingCycleInfo, isDateInBillingCycle } from '../utils/billingCycle';
 
 interface ModalAccountingReportProps {
   isOpen: boolean;
@@ -46,11 +47,14 @@ export const ModalAccountingReport: React.FC<ModalAccountingReportProps> = ({
 
   if (!isOpen) return null;
 
+  const cutoffDay = settings.billingCycleCutoffDay ?? 0;
+  const billingCycleInfo = getBillingCycleInfo(selectedMonth, cutoffDay);
+
   // Filtered shop expenses for this period
   const periodExpenses = expenses.filter((e) =>
     viewMode === 'daily'
       ? e.dateStr === selectedDate
-      : e.dateStr.startsWith(selectedMonth)
+      : isDateInBillingCycle(e.dateStr, selectedMonth, cutoffDay)
   );
 
   // Financial calculations
@@ -176,7 +180,7 @@ export const ModalAccountingReport: React.FC<ModalAccountingReportProps> = ({
   const reportPeriodTitle =
     viewMode === 'daily'
       ? `ประจำวันที่ ${selectedDate}`
-      : `ประจำเดือน ${selectedMonth}`;
+      : `รอบบิลเดือน ${billingCycleInfo.fullLabel} (${billingCycleInfo.cutoffDescription})`;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/70 backdrop-blur-xs overflow-y-auto print:p-0 print:bg-white print:static">

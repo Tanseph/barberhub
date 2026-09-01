@@ -14,6 +14,41 @@ import {
 } from 'lucide-react';
 import { sounds } from '../utils/sound';
 
+// Helper: Get local date YYYY-MM-DD (Real-time local date)
+export const getTodayDateStr = (): string => {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+};
+
+// Helper: Get tomorrow date YYYY-MM-DD
+export const getTomorrowDateStr = (): string => {
+  const d = new Date();
+  d.setDate(d.getDate() + 1);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+};
+
+// Helper: Get current nearest 30-minute slot (e.g. 10:00, 10:30, 11:00)
+export const getCurrentSlotTimeStr = (): string => {
+  const d = new Date();
+  let h = d.getHours();
+  let m = d.getMinutes();
+  if (m > 0 && m <= 30) {
+    m = 30;
+  } else if (m > 30) {
+    m = 0;
+    h = (h + 1) % 24;
+  } else {
+    m = 0;
+  }
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+};
+
 // Thai Months reference
 export const THAI_MONTHS = [
   { value: '01', name: 'มกราคม', shortName: 'ม.ค.' },
@@ -37,7 +72,7 @@ export const formatThaiTime = (timeStr?: string, withUnit: boolean = true): stri
   return withUnit ? `${clean} น.` : clean;
 };
 
-// Helper: Format time range (e.g. "13:00", "13:45") to "13.00 - 13.45 น."
+// Helper: Format time range (e.g. "13:00", "13:30") to "13.00 - 13.30 น."
 export const formatThaiTimeRange = (start?: string, end?: string): string => {
   if (!start) return '-';
   const s = start.replace(':', '.');
@@ -70,30 +105,33 @@ export const formatThaiDateShort = (dateStr?: string): string => {
   return `${String(d).padStart(2, '0')}/${String(m).padStart(2, '0')}/${thaiYear}`;
 };
 
-// 24-Hour Time slots from 06:00 to 23:45 (every 15 min, 100% no AM/PM)
+// 24-Hour Time slots with ONLY :00 and :30 (เช่น 09.00 น., 09.30 น., 10.00 น., 10.30 น.)
 const ALL_24H_TIME_OPTIONS: string[] = [];
+// ช่วงเวลาทำการ 06:00 - 23:30
 for (let h = 6; h <= 23; h++) {
-  for (let m = 0; m < 60; m += 15) {
-    const hh = String(h).padStart(2, '0');
-    const mm = String(m).padStart(2, '0');
-    ALL_24H_TIME_OPTIONS.push(`${hh}:${mm}`);
-  }
+  const hh = String(h).padStart(2, '0');
+  ALL_24H_TIME_OPTIONS.push(`${hh}:00`);
+  ALL_24H_TIME_OPTIONS.push(`${hh}:30`);
 }
+// ช่วง 00:00 - 05:30
 for (let h = 0; h < 6; h++) {
-  for (let m = 0; m < 60; m += 15) {
-    const hh = String(h).padStart(2, '0');
-    const mm = String(m).padStart(2, '0');
-    ALL_24H_TIME_OPTIONS.push(`${hh}:${mm}`);
-  }
+  const hh = String(h).padStart(2, '0');
+  ALL_24H_TIME_OPTIONS.push(`${hh}:00`);
+  ALL_24H_TIME_OPTIONS.push(`${hh}:30`);
 }
 
-// Reusable Thai Date (วัน / เดือน / ปี พ.ศ.) Picker Component
+// Reusable Thai Date (วัน / เดือน / ปี พ.ศ.) Picker Component with Real-time synchronization
 const ThaiDatePicker: React.FC<{
   value: string; // "YYYY-MM-DD"
   onChange: (val: string) => void;
   label?: string;
   isDark?: boolean;
 }> = ({ value, onChange, label, isDark }) => {
+  const todayStr = getTodayDateStr();
+  const tomorrowStr = getTomorrowDateStr();
+  const isToday = value === todayStr;
+  const isTomorrow = value === tomorrowStr;
+
   const parts = value.split('-').map(Number);
   const curY = parts[0] || new Date().getFullYear();
   const curM = parts[1] || new Date().getMonth() + 1;
@@ -135,17 +173,68 @@ const ThaiDatePicker: React.FC<{
   }`;
 
   return (
-    <div className="space-y-1.5">
+    <div className="space-y-2">
       <div className="flex items-center justify-between">
         <label className={`text-xs font-semibold ${isDark ? 'text-zinc-300' : 'text-slate-700'} flex items-center gap-1.5`}>
           <Calendar className="w-3.5 h-3.5 text-amber-600" />
           <span>{label || 'วันที่จอง (วัน / เดือน / ปี)'}</span>
         </label>
-        <span className="text-[11px] font-bold text-amber-600 bg-amber-500/10 px-2 py-0.5 rounded-md border border-amber-500/20">
-          {formatThaiDateShort(value)}
+        <span className={`text-[11px] font-bold px-2 py-0.5 rounded-md border ${
+          isToday
+            ? isDark
+              ? 'bg-amber-500/20 text-amber-400 border-amber-500/40'
+              : 'bg-amber-50 text-amber-800 border-amber-300'
+            : isDark
+            ? 'bg-zinc-800 text-zinc-300 border-zinc-700'
+            : 'bg-slate-100 text-slate-700 border-slate-200'
+        }`}>
+          {isToday ? '📍 วันนี้ (Real-time)' : formatThaiDateShort(value)}
         </span>
       </div>
 
+      {/* Quick Date Presets */}
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => {
+            sounds.playClick();
+            onChange(todayStr);
+          }}
+          className={`flex-1 py-1.5 px-2.5 rounded-lg text-xs font-bold transition-all btn-tactile flex items-center justify-center gap-1 border ${
+            isToday
+              ? isDark
+                ? 'bg-amber-500 text-zinc-950 border-amber-500 shadow-xs'
+                : 'bg-slate-900 text-white border-slate-900 shadow-xs'
+              : isDark
+              ? 'bg-zinc-900 text-zinc-300 border-zinc-800 hover:bg-zinc-800'
+              : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+          }`}
+        >
+          <span>📍 วันนี้</span>
+          <span className="text-[10px] opacity-80">(Real-time)</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            sounds.playClick();
+            onChange(tomorrowStr);
+          }}
+          className={`flex-1 py-1.5 px-2.5 rounded-lg text-xs font-bold transition-all btn-tactile flex items-center justify-center gap-1 border ${
+            isTomorrow
+              ? isDark
+                ? 'bg-amber-500 text-zinc-950 border-amber-500 shadow-xs'
+                : 'bg-slate-900 text-white border-slate-900 shadow-xs'
+              : isDark
+              ? 'bg-zinc-900 text-zinc-300 border-zinc-800 hover:bg-zinc-800'
+              : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+          }`}
+        >
+          <span>🗓️ พรุ่งนี้</span>
+        </button>
+      </div>
+
+      {/* 3 Select Dropdowns: วัน / เดือน / ปี พ.ศ. */}
       <div className="grid grid-cols-3 gap-1.5">
         {/* วัน */}
         <div>
@@ -282,36 +371,39 @@ export const TabQueue: React.FC = () => {
     }
   }, [barbers, selectedBarberId]);
 
-  const [bookingDate, setBookingDate] = useState<string>(() => {
-    const d = new Date();
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-  });
+  const [bookingDate, setBookingDate] = useState<string>(() => getTodayDateStr());
 
-  // Calculate end time helper based on slot duration minutes
-  const calculateEndTime = (start: string, durationMinutes: number = settings.queueSlotDuration || 45): string => {
+  // Calculate end time helper based on slot duration minutes (strictly in 30-minute intervals: :00 and :30)
+  const calculateEndTime = (start: string, durationMinutes: number = 30): string => {
     try {
       const normalized = start.replace('.', ':');
       const [h, m] = normalized.split(':').map(Number);
-      if (isNaN(h) || isNaN(m)) return '10:45';
-      const totalMinutes = h * 60 + m + (durationMinutes || 45);
+      if (isNaN(h) || isNaN(m)) return '10:30';
+      // Normalize duration to steps of 30 minutes (minimum 30 min)
+      const dur = Math.max(30, Math.round((durationMinutes || 30) / 30) * 30);
+      const totalMinutes = h * 60 + m + dur;
       const endH = Math.floor(totalMinutes / 60) % 24;
       const endM = totalMinutes % 60;
-      return `${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}`;
+      const cleanM = endM >= 30 ? 30 : 0;
+      return `${String(endH).padStart(2, '0')}:${String(cleanM).padStart(2, '0')}`;
     } catch {
-      return '10:45';
+      return '10:30';
     }
   };
 
   // Time States (24h internal "HH:mm")
-  const [startTime, setStartTime] = useState<string>('10:00');
-  const [endTime, setEndTime] = useState<string>(() => calculateEndTime('10:00', settings.queueSlotDuration || 45));
+  const [startTime, setStartTime] = useState<string>(() => {
+    const slot = getCurrentSlotTimeStr();
+    return slot;
+  });
+  const [endTime, setEndTime] = useState<string>(() => calculateEndTime(getCurrentSlotTimeStr(), settings.queueSlotDuration || 30));
   const [customerName, setCustomerName] = useState<string>('');
   const [customerPhone, setCustomerPhone] = useState<string>('');
 
   // Keep end time synced when slot duration setting changes
   useEffect(() => {
     if (startTime) {
-      setEndTime(calculateEndTime(startTime, settings.queueSlotDuration || 45));
+      setEndTime(calculateEndTime(startTime, settings.queueSlotDuration || 30));
     }
   }, [settings.queueSlotDuration]);
 
@@ -319,16 +411,13 @@ export const TabQueue: React.FC = () => {
   const [leaveBarberId, setLeaveBarberId] = useState<string>(
     barbers[0]?.id || ''
   );
-  const [leaveDate, setLeaveDate] = useState<string>(() => {
-    const d = new Date();
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-  });
+  const [leaveDate, setLeaveDate] = useState<string>(() => getTodayDateStr());
   const [leaveStartTime, setLeaveStartTime] = useState<string>('09:00');
   const [leaveEndTime, setLeaveEndTime] = useState<string>('19:00');
   const [leaveReason, setLeaveReason] = useState<string>('ลาพักร้อนประจำสัปดาห์');
 
-  // Filter in Queue list
-  const [filterDate, setFilterDate] = useState<string>(bookingDate);
+  // Filter in Queue list (default to real-time today)
+  const [filterDate, setFilterDate] = useState<string>(() => getTodayDateStr());
   const [filterBarber, setFilterBarber] = useState<string>('all');
   const [filterStatus, setFilterStatus] = useState<string>('all');
 

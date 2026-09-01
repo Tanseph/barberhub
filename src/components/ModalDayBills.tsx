@@ -54,17 +54,24 @@ export const ModalDayBills: React.FC<ModalDayBillsProps> = ({
   const dayBills = bills.filter((b) => b.dateStr === dateStr);
   const dayExpenses = expenses.filter((e) => e.dateStr === dateStr);
 
-  const filteredBills = dayBills.filter((b) => {
-    if (!search.trim()) return true;
-    const query = search.toLowerCase();
-    return (
-      b.billNumber.toLowerCase().includes(query) ||
-      b.customerName.toLowerCase().includes(query) ||
-      b.customerPhone?.toLowerCase().includes(query) ||
-      b.barberName.toLowerCase().includes(query) ||
-      b.notes?.toLowerCase().includes(query)
-    );
-  });
+  const filteredBills = dayBills
+    .filter((b) => {
+      if (!search.trim()) return true;
+      const query = search.toLowerCase();
+      return (
+        b.billNumber.toLowerCase().includes(query) ||
+        b.customerName.toLowerCase().includes(query) ||
+        b.customerPhone?.toLowerCase().includes(query) ||
+        b.barberName.toLowerCase().includes(query) ||
+        b.notes?.toLowerCase().includes(query)
+      );
+    })
+    .sort((a, b) => {
+      const timeA = a.timestamp || 0;
+      const timeB = b.timestamp || 0;
+      if (timeB !== timeA) return timeB - timeA;
+      return b.billNumber.localeCompare(a.billNumber);
+    });
 
   const filteredExpenses = dayExpenses.filter((e) => {
     if (!search.trim()) return true;

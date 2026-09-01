@@ -34,6 +34,7 @@ import {
   ArrowLeft,
 } from 'lucide-react';
 import { sounds } from '../utils/sound';
+import { getBillingCycleInfo } from '../utils/billingCycle';
 import { AdminUserManagementSection } from './AdminUserManagementSection';
 
 export const TabSettings: React.FC = () => {
@@ -95,6 +96,9 @@ export const TabSettings: React.FC = () => {
   );
   const [queueSlotDuration, setQueueSlotDuration] = useState(
     settings.queueSlotDuration
+  );
+  const [billingCycleCutoffDay, setBillingCycleCutoffDay] = useState<number>(
+    settings.billingCycleCutoffDay ?? 0
   );
 
   // Barber Modal State (Add or Edit)
@@ -211,7 +215,10 @@ export const TabSettings: React.FC = () => {
       defaultChemicalCommission: Number(defaultChemicalCommission) || 50,
       defaultProductCommission: Number(defaultProductCommission) || 10,
       queueSlotDuration: Number(queueSlotDuration) || 45,
+      billingCycleCutoffDay: Number(billingCycleCutoffDay) || 0,
     });
+    sounds.playSuccess();
+    showToast('บันทึกการตั้งค่าร้านสำเร็จ 💾', 'บันทึกข้อมูลและวันตัดรอบบิลเรียบร้อยแล้ว', 'success');
   };
 
   // Open Barber Add Modal
@@ -815,15 +822,170 @@ export const TabSettings: React.FC = () => {
             </div>
           </div>
         </div>
+
+        {/* 3. MONTHLY BILLING CYCLE SETTINGS (รอบตัดบิลประจำเดือน) */}
+        <div className={`${theme.bgCard} rounded-2xl p-5 sm:p-6 space-y-5 transition-all`}>
+          <div className={`flex items-center justify-between pb-3 border-b ${borderSubtle}`}>
+            <div className="flex items-center gap-2">
+              <Calendar className="w-5 h-5 text-indigo-500" />
+              <div>
+                <h3 className={`text-base font-bold ${headingText}`}>
+                  3. ตั้งค่าวันตัดรอบบิลประจำเดือน (Monthly Billing Cycle Cut-off)
+                </h3>
+                <p className={`text-xs ${mutedText}`}>
+                  กำหนดวันตัดรอบเพื่อสรุปยอดขาย รายงานบัญชี กราฟ และส่วนแบ่งช่างในแต่ละเดือน
+                </p>
+              </div>
+            </div>
+            <button
+              type="submit"
+              className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs shadow-xs btn-tactile"
+            >
+              <Save className="w-4 h-4" />
+              <span>บันทึกการตั้งค่า</span>
+            </button>
+          </div>
+
+          {/* Quick Preset Buttons */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            {/* Preset 1: End of month */}
+            <button
+              type="button"
+              onClick={() => setBillingCycleCutoffDay(0)}
+              className={`p-3.5 rounded-xl border text-left transition-all btn-tactile ${
+                billingCycleCutoffDay === 0
+                  ? 'bg-indigo-500/15 border-indigo-500 text-indigo-400 ring-2 ring-indigo-500/30'
+                  : isDark
+                  ? 'bg-zinc-950/60 border-zinc-800 hover:border-zinc-700 text-zinc-300'
+                  : 'bg-slate-50 border-slate-200 hover:border-slate-300 text-slate-700'
+              }`}
+            >
+              <div className="flex items-center justify-between mb-1">
+                <span className="font-bold text-xs">🌟 ตัดทุกสิ้นเดือน</span>
+                {billingCycleCutoffDay === 0 && <Check className="w-4 h-4 text-indigo-500" />}
+              </div>
+              <p className={`text-[11px] ${billingCycleCutoffDay === 0 ? 'text-indigo-400 dark:text-indigo-300 font-medium' : mutedText}`}>
+                วันที่ 1 ถึง สิ้นเดือน (28/30/31) — เริ่มใหม่วันที่ 1
+              </p>
+            </button>
+
+            {/* Preset 2: Cutoff 25 */}
+            <button
+              type="button"
+              onClick={() => setBillingCycleCutoffDay(25)}
+              className={`p-3.5 rounded-xl border text-left transition-all btn-tactile ${
+                billingCycleCutoffDay === 25
+                  ? 'bg-amber-500/15 border-amber-500 text-amber-400 ring-2 ring-amber-500/30'
+                  : isDark
+                  ? 'bg-zinc-950/60 border-zinc-800 hover:border-zinc-700 text-zinc-300'
+                  : 'bg-slate-50 border-slate-200 hover:border-slate-300 text-slate-700'
+              }`}
+            >
+              <div className="flex items-center justify-between mb-1">
+                <span className="font-bold text-xs">📅 ตัดทุกวันที่ 25</span>
+                {billingCycleCutoffDay === 25 && <Check className="w-4 h-4 text-amber-500" />}
+              </div>
+              <p className={`text-[11px] ${billingCycleCutoffDay === 25 ? 'text-amber-400 dark:text-amber-300 font-medium' : mutedText}`}>
+                วันที่ 26 เดือนก่อน - 25 เดือนนี้ — เริ่มใหม่วันที่ 26
+              </p>
+            </button>
+
+            {/* Preset 3: Cutoff 20 */}
+            <button
+              type="button"
+              onClick={() => setBillingCycleCutoffDay(20)}
+              className={`p-3.5 rounded-xl border text-left transition-all btn-tactile ${
+                billingCycleCutoffDay === 20
+                  ? 'bg-emerald-500/15 border-emerald-500 text-emerald-400 ring-2 ring-emerald-500/30'
+                  : isDark
+                  ? 'bg-zinc-950/60 border-zinc-800 hover:border-zinc-700 text-zinc-300'
+                  : 'bg-slate-50 border-slate-200 hover:border-slate-300 text-slate-700'
+              }`}
+            >
+              <div className="flex items-center justify-between mb-1">
+                <span className="font-bold text-xs">📅 ตัดทุกวันที่ 20</span>
+                {billingCycleCutoffDay === 20 && <Check className="w-4 h-4 text-emerald-500" />}
+              </div>
+              <p className={`text-[11px] ${billingCycleCutoffDay === 20 ? 'text-emerald-400 dark:text-emerald-300 font-medium' : mutedText}`}>
+                วันที่ 21 เดือนก่อน - 20 เดือนนี้ — เริ่มใหม่วันที่ 21
+              </p>
+            </button>
+
+            {/* Preset 4: Custom day */}
+            <div
+              className={`p-3.5 rounded-xl border transition-all ${
+                billingCycleCutoffDay !== 0 && billingCycleCutoffDay !== 25 && billingCycleCutoffDay !== 20
+                  ? 'bg-purple-500/15 border-purple-500 text-purple-400 ring-2 ring-purple-500/30'
+                  : isDark
+                  ? 'bg-zinc-950/60 border-zinc-800 text-zinc-300'
+                  : 'bg-slate-50 border-slate-200 text-slate-700'
+              }`}
+            >
+              <label className="block font-bold text-xs mb-1">⚙️ กำหนดวันที่ตัดรอบเอง</label>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[11px] shrink-0 font-medium">ตัดวันที่</span>
+                <select
+                  value={billingCycleCutoffDay}
+                  onChange={(e) => setBillingCycleCutoffDay(Number(e.target.value))}
+                  className={`w-full px-2 py-1 rounded-lg border font-bold font-mono text-xs focus:outline-none ${
+                    isDark ? 'bg-zinc-900 border-zinc-700 text-amber-400' : 'bg-white border-slate-200 text-slate-800'
+                  }`}
+                >
+                  <option value={0}>สิ้นเดือน (1 ถึง สิ้นเดือน)</option>
+                  {Array.from({ length: 30 }, (_, i) => i + 1).map((d) => (
+                    <option key={d} value={d}>
+                      วันที่ {d} (เริ่มใหม่วันที่ {d + 1})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {/* Real-time Cycle Preview Card */}
+          {(() => {
+            const today = new Date();
+            const currentMonthKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+            const cyclePreview = getBillingCycleInfo(currentMonthKey, billingCycleCutoffDay);
+
+            return (
+              <div
+                className={`p-4 rounded-xl border flex flex-col md:flex-row items-start md:items-center justify-between gap-4 ${
+                  isDark ? 'bg-zinc-950/80 border-zinc-800' : 'bg-slate-100/80 border-slate-200'
+                }`}
+              >
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-indigo-500/20 text-indigo-400 border border-indigo-500/30">
+                      ตัวอย่างรอบบิลเดือนปัจจุบัน
+                    </span>
+                    <span className={`text-sm font-bold ${headingText}`}>
+                      {cyclePreview.fullLabel}
+                    </span>
+                  </div>
+                  <p className={`text-xs ${mutedText}`}>
+                    📌 {cyclePreview.cutoffDescription} | รอบบิลถัดไปจะเริ่มวันที่ <span className="font-semibold text-emerald-500">{cyclePreview.nextCycleStartDate}</span>
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className="px-3 py-1.5 rounded-lg bg-indigo-600/20 text-indigo-400 dark:text-indigo-300 border border-indigo-500/30 font-mono font-bold text-xs">
+                    {cyclePreview.label}
+                  </span>
+                </div>
+              </div>
+            );
+          })()}
+        </div>
       </form>
 
-      {/* 3. BARBER MANAGEMENT */}
+      {/* 4. BARBER MANAGEMENT */}
       <div className={`${theme.bgCard} rounded-2xl p-5 sm:p-6 space-y-4 transition-all`}>
         <div className={`flex items-center justify-between pb-3 border-b ${borderSubtle}`}>
           <div className="flex items-center gap-2">
             <Users className="w-5 h-5 text-amber-600" />
             <h3 className={`text-base font-bold ${headingText}`}>
-              3. รายชื่อช่างตัดผมในร้าน ({barbers.length} คน)
+              4. รายชื่อช่างตัดผมในร้าน ({barbers.length} คน)
             </h3>
           </div>
           <button
@@ -892,13 +1054,13 @@ export const TabSettings: React.FC = () => {
         </div>
       </div>
 
-      {/* 4. PRODUCT INVENTORY MANAGEMENT */}
+      {/* 5. PRODUCT INVENTORY MANAGEMENT */}
       <div className={`${theme.bgCard} rounded-2xl p-5 sm:p-6 space-y-4 transition-all`}>
         <div className={`flex items-center justify-between pb-3 border-b ${borderSubtle}`}>
           <div className="flex items-center gap-2">
             <ShoppingBag className="w-5 h-5 text-purple-600" />
             <h3 className={`text-base font-bold ${headingText}`}>
-              4. รายการสินค้าและราคา ({products.length} รายการ)
+              5. รายการสินค้าและราคา ({products.length} รายการ)
             </h3>
           </div>
           <button
@@ -980,7 +1142,7 @@ export const TabSettings: React.FC = () => {
             <div>
               <div className="flex items-center gap-2">
                 <h3 className={`text-base font-bold ${headingText}`}>
-                  5. สตูดิโอธีมสีสว่าง & สไตล์โปรแกรม (White Edition Themes)
+                  6. สตูดิโอธีมสีสว่าง & สไตล์โปรแกรม (White Edition Themes)
                 </h3>
                 <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-100 text-emerald-800 border border-emerald-200">
                   8 สไตล์โทนขาว
@@ -1098,14 +1260,14 @@ export const TabSettings: React.FC = () => {
         </div>
       </div>
 
-      {/* 6. SETTINGS PIN CODE MANAGEMENT */}
+      {/* 7. SETTINGS PIN CODE MANAGEMENT */}
       <div className={`${theme.bgCard} rounded-2xl p-5 sm:p-6 space-y-4 transition-all`}>
         <div className={`flex items-center justify-between pb-3 border-b ${borderSubtle}`}>
           <div className="flex items-center gap-2">
             <Shield className="w-5 h-5 text-amber-600" />
             <div>
               <h3 className={`text-base font-bold ${headingText}`}>
-                6. ความปลอดภัย & รหัสผ่านหน้าตั้งค่า (Settings PIN Code)
+                7. ความปลอดภัย & รหัสผ่านหน้าตั้งค่า (Settings PIN Code)
               </h3>
               <p className={`text-xs ${mutedText}`}>
                 กำหนดรหัสผ่านสำหรับเข้าหน้าตั้งค่าร้าน เพื่อป้องกันไม่ให้บุคคลภายนอกหรือพนักงานแก้ไขข้อมูลร้านค้า

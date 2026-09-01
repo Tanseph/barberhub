@@ -29,6 +29,11 @@ import {
   Banknote,
 } from 'lucide-react';
 import { SaleBill, ShopExpense, Barber, ShopSettings } from '../types';
+import {
+  getBillingCycleInfo,
+  filterBillsByBillingCycle,
+  filterExpensesByBillingCycle,
+} from '../utils/billingCycle';
 
 interface MonthlyRevenueChartProps {
   bills: SaleBill[];
@@ -60,19 +65,14 @@ export const MonthlyRevenueChart: React.FC<MonthlyRevenueChartProps> = ({
   const gridStroke = isDark ? '#27272a' : '#e2e8f0';
   const axisColor = isDark ? '#a1a1aa' : '#64748b';
 
+  const cutoffDay = settings.billingCycleCutoffDay ?? 0;
+  const billingCycleInfo = useMemo(() => getBillingCycleInfo(selectedMonth, cutoffDay), [selectedMonth, cutoffDay]);
+
   // 1. Data for Daily breakdown in the selected month
   const dailyData = useMemo(() => {
-    const [yearStr, monthStr] = selectedMonth.split('-');
-    const year = parseInt(yearStr, 10);
-    const month = parseInt(monthStr, 10);
-    const daysInMonth = new Date(year, month, 0).getDate();
-
-    const data = [];
-    for (let d = 1; d <= daysInMonth; d++) {
-      const dayPadded = String(d).padStart(2, '0');
-      const dateStr = `${selectedMonth}-${dayPadded}`;
-      const dayBills = bills.filter((b) => b.dateStr === dateStr);
-      const dayExpenses = expenses.filter((e) => e.dateStr === dateStr);
+    return billingCycleInfo.days.map((d) => {
+      const dayBills = bills.filter((b) => b.dateStr === d.dateStr);
+      const dayExpenses = expenses.filter((e) => e.dateStr === d.dateStr);
 
       const gross = dayBills.reduce((s, b) => s + b.grossTotal, 0);
       const barberPayroll = dayBills.reduce((s, b) => s + b.commission.barberTotalEarned, 0);
@@ -84,10 +84,11 @@ export const MonthlyRevenueChart: React.FC<MonthlyRevenueChartProps> = ({
       const chemical = dayBills.reduce((s, b) => s + b.chemicalFee, 0);
       const product = dayBills.reduce((s, b) => s + b.totalProductsFee, 0);
 
-      data.push({
-        day: `วันที่ ${d}`,
-        dayNum: d,
-        dateStr,
+      return {
+        day: d.dayFullDateTh,
+        dayNum: d.dayNumber,
+        cycleIndex: d.cycleDayIndex,
+        dateStr: d.dateStr,
         gross,
         shopNet: Math.max(0, shopNet),
         barberPayroll,
@@ -98,25 +99,24 @@ export const MonthlyRevenueChart: React.FC<MonthlyRevenueChartProps> = ({
         chemical,
         product,
         billCount: dayBills.length,
-      });
-    }
-    return data;
-  }, [bills, expenses, selectedMonth]);
+      };
+    });
+  }, [bills, expenses, billingCycleInfo]);
 
   // 2. Data for 6-12 Months historical trend
   const multiMonthData = useMemo(() => {
     const [currYear, currMonth] = selectedMonth.split('-').map(Number);
     const months = [];
-    
+
     // Generate past 6 months leading up to selected month
     for (let i = 5; i >= 0; i--) {
       const d = new Date(currYear, currMonth - 1 - i, 1);
       const yStr = d.getFullYear();
       const mStr = String(d.getMonth() + 1).padStart(2, '0');
       const mKey = `${yStr}-${mStr}`;
-      
-      const monthBills = bills.filter((b) => b.dateStr.startsWith(mKey));
-      const monthExpenses = expenses.filter((e) => e.dateStr.startsWith(mKey));
+
+      const monthBills = filterBillsByBillingCycle(bills, mKey, cutoffDay);
+      const monthExpenses = filterExpensesByBillingCycle(expenses, mKey, cutoffDay);
 
       const gross = monthBills.reduce((s, b) => s + b.grossTotal, 0);
       const barberPayroll = monthBills.reduce((s, b) => s + b.commission.barberTotalEarned, 0);
@@ -141,11 +141,11 @@ export const MonthlyRevenueChart: React.FC<MonthlyRevenueChartProps> = ({
       });
     }
     return months;
-  }, [bills, expenses, selectedMonth]);
+  }, [bills, expenses, selectedMonth, cutoffDay]);
 
   // 3. Data for Service Breakdown in selected month
   const servicePieData = useMemo(() => {
-    const monthBills = bills.filter((b) => b.dateStr.startsWith(selectedMonth));
+    const monthBills = filterBillsByBillingCycle(bills, selectedMonth, cutoffDay);
     const haircut = monthBills.reduce((s, b) => s + b.haircutFee, 0);
     const chemical = monthBills.reduce((s, b) => s + b.chemicalFee, 0);
     const product = monthBills.reduce((s, b) => s + b.totalProductsFee, 0);
@@ -160,11 +160,11 @@ export const MonthlyRevenueChart: React.FC<MonthlyRevenueChartProps> = ({
       { name: 'ขายสินค้า/โพเมด', value: product, color: '#06b6d4', percent: ((product / total) * 100).toFixed(1) },
       { name: 'ทิปช่าง', value: tip, color: '#10b981', percent: ((tip / total) * 100).toFixed(1) },
     ].filter((item) => item.value > 0);
-  }, [bills, selectedMonth]);
+  }, [bills, selectedMonth, cutoffDay]);
 
   // 4. Data for Barber Performance in selected month
   const barberPerformanceData = useMemo(() => {
-    const monthBills = bills.filter((b) => b.dateStr.startsWith(selectedMonth));
+    const monthBills = filterBillsByBillingCycle(bills, selectedMonth, cutoffDay);
     return barbers.map((barber) => {
       const bBills = monthBills.filter((b) => b.barberId === barber.id);
       const gross = bBills.reduce((s, b) => s + b.grossTotal, 0);
@@ -183,7 +183,7 @@ export const MonthlyRevenueChart: React.FC<MonthlyRevenueChartProps> = ({
         bills: bBills.length,
       };
     }).sort((a, b) => b.gross - a.gross);
-  }, [barbers, bills, selectedMonth]);
+  }, [barbers, bills, selectedMonth, cutoffDay]);
 
   // Stats calculation
   const bestDay = useMemo(() => {
@@ -234,9 +234,12 @@ export const MonthlyRevenueChart: React.FC<MonthlyRevenueChartProps> = ({
             <h3 className={`text-base font-bold ${headingText}`}>
               กราฟวิเคราะห์ยอดขายและรายได้ (Interactive Revenue Charts)
             </h3>
+            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30">
+              {billingCycleInfo.label}
+            </span>
           </div>
           <p className={`text-xs ${mutedText}`}>
-            แสดงภาพรวมยอดขาย กำไรสุทธิ สัดส่วนช่องทางชำระเงิน และผลงานช่างประจำเดือน {selectedMonth}
+            {billingCycleInfo.fullLabel} • {billingCycleInfo.cutoffDescription}
           </p>
         </div>
 

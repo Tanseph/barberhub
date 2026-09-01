@@ -350,6 +350,7 @@ export function subscribeToShopData(
         if (callbacks.onBills) {
           const items: SaleBill[] = [];
           snap.forEach((d) => items.push(d.data() as SaleBill));
+          items.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0) || b.billNumber.localeCompare(a.billNumber));
           callbacks.onBills(items);
         }
       },

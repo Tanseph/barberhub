@@ -34,6 +34,13 @@ import { ModalAccountingReport } from './ModalAccountingReport';
 import { ModalDayBills } from './ModalDayBills';
 import { ModalMergeBills } from './ModalMergeBills';
 import { MonthlyRevenueChart } from './MonthlyRevenueChart';
+import {
+  getBillingCycleInfo,
+  filterBillsByBillingCycle,
+  filterExpensesByBillingCycle,
+  isDateInBillingCycle,
+  getBillingCycleMonthOptions,
+} from '../utils/billingCycle';
 
 export const TabDashboard: React.FC = () => {
   const {
@@ -88,14 +95,18 @@ export const TabDashboard: React.FC = () => {
   const [barberFilter, setBarberFilter] = useState<string>('all');
   const [paymentFilter, setPaymentFilter] = useState<string>('all');
 
+  // Billing cycle calculations
+  const cutoffDay = settings.billingCycleCutoffDay ?? 0;
+  const billingCycleInfo = useMemo(() => getBillingCycleInfo(selectedMonth, cutoffDay), [selectedMonth, cutoffDay]);
+
   // Filtered bills for the current selected period (Daily vs Monthly)
   const allPeriodBills = useMemo(() => {
     return bills.filter((b) =>
       viewMode === 'daily'
         ? b.dateStr === selectedDate
-        : b.dateStr.startsWith(selectedMonth)
+        : isDateInBillingCycle(b.dateStr, selectedMonth, cutoffDay)
     );
-  }, [bills, viewMode, selectedDate, selectedMonth]);
+  }, [bills, viewMode, selectedDate, selectedMonth, cutoffDay]);
 
   // Today specific calculations
   const todayBills = useMemo(() => {
@@ -109,10 +120,10 @@ export const TabDashboard: React.FC = () => {
   const todayTransferAmount = todayBills.reduce((s, b) => s + b.transferAmount, 0);
   const todayCashAmount = todayBills.reduce((s, b) => s + b.cashAmount, 0);
 
-  // Selected Month specific calculations
+  // Selected Month / Billing Cycle specific calculations
   const monthBills = useMemo(() => {
-    return bills.filter((b) => b.dateStr.startsWith(selectedMonth));
-  }, [bills, selectedMonth]);
+    return filterBillsByBillingCycle(bills, selectedMonth, cutoffDay);
+  }, [bills, selectedMonth, cutoffDay]);
   const monthHeads = monthBills.length;
   const monthHaircuts = monthBills.filter((b) => b.haircutFee > 0).length;
   const monthTransferBills = monthBills.filter((b) => b.paymentMethod === 'transfer' || (b.paymentMethod === 'split' && b.transferAmount > 0)).length;
@@ -121,7 +132,7 @@ export const TabDashboard: React.FC = () => {
   const monthTransferAmount = monthBills.reduce((s, b) => s + b.transferAmount, 0);
   const monthCashAmount = monthBills.reduce((s, b) => s + b.cashAmount, 0);
 
-  // Count distinct active days in the month
+  // Count distinct active days in the billing cycle
   const monthActiveDays = useMemo(() => {
     const uniqueDays = new Set(monthBills.map((b) => b.dateStr));
     return uniqueDays.size;
@@ -133,54 +144,50 @@ export const TabDashboard: React.FC = () => {
     return expenses.filter((e) =>
       viewMode === 'daily'
         ? e.dateStr === selectedDate
-        : e.dateStr.startsWith(selectedMonth)
+        : isDateInBillingCycle(e.dateStr, selectedMonth, cutoffDay)
     );
-  }, [expenses, viewMode, selectedDate, selectedMonth]);
+  }, [expenses, viewMode, selectedDate, selectedMonth, cutoffDay]);
 
   // Filtered bills for the daily ledger table (with search & filters applied)
+  // รายการแรกเริ่มจากด้านล่างขึ้นไป (บิลล่าสุดอยู่บนสุด, บิลแรกสุดของวันอยู่ล่างสุด)
   const filteredDailyBills = useMemo(() => {
-    return allPeriodBills.filter((b) => {
-      // Barber filter
-      if (barberFilter !== 'all' && b.barberId !== barberFilter) return false;
+    return allPeriodBills
+      .filter((b) => {
+        // Barber filter
+        if (barberFilter !== 'all' && b.barberId !== barberFilter) return false;
 
-      // Payment filter
-      if (paymentFilter !== 'all' && b.paymentMethod !== paymentFilter) return false;
+        // Payment filter
+        if (paymentFilter !== 'all' && b.paymentMethod !== paymentFilter) return false;
 
-      // Search keyword
-      if (billSearch.trim()) {
-        const query = billSearch.toLowerCase();
-        const matchesBillNum = b.billNumber.toLowerCase().includes(query);
-        const matchesCust = b.customerName.toLowerCase().includes(query);
-        const matchesPhone = b.customerPhone?.toLowerCase().includes(query);
-        const matchesBarber = b.barberName.toLowerCase().includes(query);
-        const matchesNotes = b.notes?.toLowerCase().includes(query);
-        return Boolean(matchesBillNum || matchesCust || matchesPhone || matchesBarber || matchesNotes);
-      }
+        // Search keyword
+        if (billSearch.trim()) {
+          const query = billSearch.toLowerCase();
+          const matchesBillNum = b.billNumber.toLowerCase().includes(query);
+          const matchesCust = b.customerName.toLowerCase().includes(query);
+          const matchesPhone = b.customerPhone?.toLowerCase().includes(query);
+          const matchesBarber = b.barberName.toLowerCase().includes(query);
+          const matchesNotes = b.notes?.toLowerCase().includes(query);
+          return Boolean(matchesBillNum || matchesCust || matchesPhone || matchesBarber || matchesNotes);
+        }
 
-      return true;
-    });
+        return true;
+      })
+      .sort((a, b) => {
+        // บิลล่าสุดอยู่บนสุด, บิลแรกสุดของวันอยู่ล่างสุด (รายการแรกเริ่มจากล่างขึ้นไป)
+        const timeA = a.timestamp || 0;
+        const timeB = b.timestamp || 0;
+        if (timeB !== timeA) return timeB - timeA;
+        return b.billNumber.localeCompare(a.billNumber);
+      });
   }, [allPeriodBills, barberFilter, paymentFilter, billSearch]);
 
-  // Monthly breakdown day by day (from Day 1 to End of Month)
+  // Monthly breakdown day by day according to configured billing cycle
   const monthlyDaysSummary = useMemo(() => {
     if (viewMode !== 'monthly') return [];
 
-    const [yearStr, monthStr] = selectedMonth.split('-');
-    const year = parseInt(yearStr, 10);
-    const month = parseInt(monthStr, 10);
-    const daysInMonth = new Date(year, month, 0).getDate();
-
-    const result = [];
-    for (let d = 1; d <= daysInMonth; d++) {
-      const dayStrPadded = String(d).padStart(2, '0');
-      const dateStr = `${selectedMonth}-${dayStrPadded}`;
-      const dateObj = new Date(`${dateStr}T00:00:00`);
-      
-      const dayName = dateObj.toLocaleDateString('th-TH', { weekday: 'short' });
-      const dayFullDateTh = dateObj.toLocaleDateString('th-TH', { day: 'numeric', month: 'short' });
-
-      const dayBills = bills.filter((b) => b.dateStr === dateStr);
-      const dayExpensesList = expenses.filter((e) => e.dateStr === dateStr);
+    return billingCycleInfo.days.map((day) => {
+      const dayBills = bills.filter((b) => b.dateStr === day.dateStr);
+      const dayExpensesList = expenses.filter((e) => e.dateStr === day.dateStr);
 
       const billCount = dayBills.length;
       const headsCount = dayBills.length;
@@ -196,11 +203,13 @@ export const TabDashboard: React.FC = () => {
       const shopCommissionGross = dayBills.reduce((s, b) => s + b.commission.shopNetEarned, 0);
       const shopNet = shopCommissionGross - shopExpenseAmount;
 
-      result.push({
-        dayNumber: d,
-        dateStr,
-        dayName,
-        dayFullDateTh,
+      return {
+        dayNumber: day.dayNumber,
+        cycleDayIndex: day.cycleDayIndex,
+        isPrevMonth: day.isPrevMonth,
+        dateStr: day.dateStr,
+        dayName: day.dayName,
+        dayFullDateTh: day.dayFullDateTh,
         billCount,
         headsCount,
         haircutCount,
@@ -214,11 +223,9 @@ export const TabDashboard: React.FC = () => {
         shopExpenseAmount,
         totalExpenses,
         shopNet,
-      });
-    }
-
-    return result;
-  }, [viewMode, selectedMonth, bills, expenses]);
+      };
+    });
+  }, [viewMode, billingCycleInfo, bills, expenses]);
 
   // Filtered monthly days if toggle active
   const filteredMonthlyDays = useMemo(() => {
@@ -1041,11 +1048,14 @@ export const TabDashboard: React.FC = () => {
               <div className="flex items-center gap-2">
                 <CalendarDays className="w-5 h-5 text-amber-600" />
                 <h3 className={`text-base font-bold ${headingText}`}>
-                  ตารางสรุปรายวันประจำเดือน ({selectedMonth} • วันที่ 1 ถึงสิ้นเดือน)
+                  ตารางสรุปรายวันประจำรอบบิล ({billingCycleInfo.fullLabel})
                 </h3>
+                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30">
+                  {billingCycleInfo.cutoffDescription}
+                </span>
               </div>
               <p className={`text-xs ${mutedText} mt-0.5`}>
-                สรุปจำนวนบิล ยอดเงินโอน ยอดเงินสด รายรับรวม และรายจ่ายจ่ายช่างของแต่ละวัน • กดดูรายการย้อนหลังของวันนั้นได้ทันที
+                สรุปจำนวนบิล ยอดเงินโอน ยอดเงินสด รายรับรวม และรายจ่ายจ่ายช่างของแต่ละวันในรอบบิล ({billingCycleInfo.startDate} ถึง {billingCycleInfo.endDate})
               </p>
             </div>
 

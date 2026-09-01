@@ -236,6 +236,7 @@ export interface ShopSettings {
   defaultProductCommission: number; // 10%
   defaultTipPolicy: number; // 100%
   queueSlotDuration: number; // 30, 45, 60, 90 mins
+  billingCycleCutoffDay?: number; // 0 = ตัดสิ้นเดือน (1-สิ้นเดือน), หรือ 1-30 = วันที่ตัดรอบ เช่น 25 (26 เดือนก่อน - 25 เดือนนี้)
   themeId: ThemeKey;
   receiptFooterMsg: string;
   settingsPin?: string; // Default '1234'

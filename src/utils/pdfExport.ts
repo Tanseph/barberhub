@@ -1,6 +1,7 @@
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
 import { SaleBill, Barber, ShopExpense, ShopSettings } from '../types';
+import { getBillingCycleInfo } from './billingCycle';
 
 interface GenerateReportPdfParams {
   settings: ShopSettings;
@@ -61,10 +62,13 @@ export async function exportReportToPDF({
   const transferBillCount = periodBills.filter((b) => b.paymentMethod === 'transfer' || (b.paymentMethod === 'split' && b.transferAmount > 0)).length;
   const cashBillCount = periodBills.filter((b) => b.paymentMethod === 'cash' || (b.paymentMethod === 'split' && b.cashAmount > 0)).length;
 
+  const cutoffDay = settings.billingCycleCutoffDay ?? 0;
+  const billingCycleInfo = getBillingCycleInfo(selectedMonth, cutoffDay);
+
   const reportPeriodTitle =
     viewMode === 'daily'
       ? `ประจำวันที่ ${selectedDate}`
-      : `ประจำเดือน ${selectedMonth}`;
+      : `รอบบิลเดือน ${billingCycleInfo.fullLabel} (${billingCycleInfo.cutoffDescription})`;
 
   // Create an offscreen, clean HTML container with pure inline RGB/HEX styles
   // to avoid Tailwind 4 oklch() color parsing bugs in html2canvas
