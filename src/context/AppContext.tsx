@@ -928,11 +928,17 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   ): SaleBill => {
     const today = new Date();
-    const dateCode = `${String(today.getFullYear()).slice(-2)}${String(today.getMonth() + 1).padStart(2, '0')}${String(
+    let dateCode = `${String(today.getFullYear()).slice(-2)}${String(today.getMonth() + 1).padStart(2, '0')}${String(
       today.getDate()
     ).padStart(2, '0')}`;
-    const billsToday = bills.filter((b) => b.billNumber.startsWith(`B${dateCode}`));
-    const seq = String(billsToday.length + 1).padStart(3, '0');
+    if (billData.dateStr) {
+      const parts = billData.dateStr.split('-');
+      if (parts.length === 3) {
+        dateCode = `${parts[0].slice(-2)}${parts[1]}${parts[2]}`;
+      }
+    }
+    const billsMatchingDate = bills.filter((b) => b.billNumber.startsWith(`B${dateCode}`));
+    const seq = String(billsMatchingDate.length + 1).padStart(3, '0');
     const billNumber = `B${dateCode}-${seq}`;
 
     const calculatedCommission =
@@ -945,10 +951,21 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         billData.tipFee
       );
 
+    let billTimestamp = billData.timestamp;
+    if (!billTimestamp) {
+      if (billData.dateStr && billData.timeStr) {
+        const parsedT = new Date(`${billData.dateStr}T${billData.timeStr}:00`).getTime();
+        billTimestamp = isNaN(parsedT) ? Date.now() : parsedT;
+      } else {
+        billTimestamp = Date.now();
+      }
+    }
+
     const newBill: SaleBill = {
       ...billData,
-      id: `bill-${Date.now()}`,
+      id: `bill-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
       billNumber,
+      timestamp: billTimestamp,
       headCount: billData.headCount && billData.headCount > 0 ? billData.headCount : 1,
       commission: calculatedCommission,
     };

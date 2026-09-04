@@ -20,8 +20,16 @@ import {
   Receipt,
   Calculator,
   Percent,
+  Calendar,
 } from 'lucide-react';
 import { sounds } from '../utils/sound';
+import {
+  RealtimeDatePicker,
+  getTodayDateStr,
+  formatThaiDateShort,
+  formatThaiDateWithWeekday,
+  getDayDifference,
+} from './RealtimeDatePicker';
 
 export const TabPOS: React.FC = () => {
   const {
@@ -37,6 +45,14 @@ export const TabPOS: React.FC = () => {
   } = useApp();
 
   const isDark = theme.isDark ?? true;
+
+  // Sale Date & Time State (Real-time by default, editable for retroactive entries)
+  const [saleDate, setSaleDate] = useState<string>(() => getTodayDateStr());
+  const [saleTime, setSaleTime] = useState<string>(() => {
+    const d = new Date();
+    return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  });
+  const [isLiveClock, setIsLiveClock] = useState<boolean>(true);
 
   // Form State
   const [selectedBarberId, setSelectedBarberId] = useState<string>(
@@ -67,12 +83,20 @@ export const TabPOS: React.FC = () => {
   const [transferInputStr, setTransferInputStr] = useState<string>('');
   const [activeQueueId, setActiveQueueId] = useState<string | undefined>(undefined);
 
-  // Real-time clock
+  // Real-time clock: continuously ticks live time
   const [liveDate, setLiveDate] = useState<Date>(new Date());
   useEffect(() => {
-    const timer = setInterval(() => setLiveDate(new Date()), 1000);
+    const timer = setInterval(() => {
+      const now = new Date();
+      setLiveDate(now);
+      if (isLiveClock) {
+        const hh = String(now.getHours()).padStart(2, '0');
+        const mm = String(now.getMinutes()).padStart(2, '0');
+        setSaleTime(`${hh}:${mm}`);
+      }
+    }, 1000);
     return () => clearInterval(timer);
-  }, []);
+  }, [isLiveClock]);
 
   // Sync when coming from Queue tab
   useEffect(() => {
@@ -248,10 +272,8 @@ export const TabPOS: React.FC = () => {
     e.preventDefault();
 
     const cName = customerName.trim() || 'ลูกค้าทั่วไป (Walk-in)';
-    const dateStr = `${liveDate.getFullYear()}-${String(liveDate.getMonth() + 1).padStart(2, '0')}-${String(
-      liveDate.getDate()
-    ).padStart(2, '0')}`;
-    const timeStr = liveDate.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
+    const dateStr = saleDate;
+    const timeStr = saleTime.trim() || liveDate.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
 
     let finalCash = cashAmount;
     let finalTransfer = transferAmount;
@@ -264,8 +286,16 @@ export const TabPOS: React.FC = () => {
       finalTransfer = grossTotal;
     }
 
+    let finalTimestamp = Date.now();
+    try {
+      const parsed = new Date(`${dateStr}T${timeStr.replace('.', ':')}:00`).getTime();
+      if (!isNaN(parsed)) {
+        finalTimestamp = parsed;
+      }
+    } catch {}
+
     const savedBill = addSaleBill({
-      timestamp: Date.now(),
+      timestamp: finalTimestamp,
       dateStr,
       timeStr,
       barberId: selectedBarberId,
@@ -305,6 +335,11 @@ export const TabPOS: React.FC = () => {
   const inputBg = isDark
     ? 'bg-zinc-950 border-zinc-700 text-zinc-100 focus-within:border-amber-500'
     : 'bg-slate-50 border-slate-200 text-slate-900 focus-within:border-slate-800 focus-within:bg-white';
+
+  const todayStr = getTodayDateStr();
+  const isToday = saleDate === todayStr;
+  const diffDays = getDayDifference(saleDate, todayStr);
+  const isPast = diffDays < 0;
 
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6 py-6 animate-fadeIn">
@@ -630,8 +665,8 @@ export const TabPOS: React.FC = () => {
           )}
         </div>
 
-        {/* 5. NOTES (BLANK FIELD AS REQUESTED) & PAYMENT METHOD */}
-        <div className={`${cardBg} rounded-2xl p-5 border ${borderSubtle} shadow-sm space-y-4`}>
+        {/* 5. NOTES (BLANK FIELD AS REQUESTED), DATE/TIME & PAYMENT METHOD */}
+        <div className={`${cardBg} rounded-2xl p-5 border ${borderSubtle} shadow-sm space-y-5`}>
           {/* Notes: Empty blank field with no placeholder */}
           <div>
             <label className={`flex items-center gap-1.5 text-xs font-bold ${headingText} mb-1.5`}>
@@ -649,6 +684,71 @@ export const TabPOS: React.FC = () => {
             </div>
           </div>
 
+          {/* Date & Time Picker (Placed directly below Notes) */}
+          <div
+            className={`p-4 rounded-xl border transition-all ${
+              isPast
+                ? isDark
+                  ? 'border-amber-500/50 bg-amber-500/5 shadow-md shadow-amber-500/5'
+                  : 'border-amber-300 bg-amber-50/70 shadow-xs'
+                : isDark
+                ? 'border-zinc-800 bg-zinc-950/40'
+                : 'border-slate-200 bg-slate-50/60'
+            }`}
+          >
+            <RealtimeDatePicker
+              value={saleDate}
+              onChange={(newDate) => {
+                setSaleDate(newDate);
+                if (newDate === getTodayDateStr()) {
+                  setIsLiveClock(true);
+                }
+              }}
+              label="วันที่และเวลาทำรายการ / เปิดบิล"
+              isDark={isDark}
+              showYesterday={true}
+              showTime={true}
+              timeValue={saleTime}
+              onTimeChange={(newTime) => {
+                setSaleTime(newTime);
+                setIsLiveClock(false);
+              }}
+              subtitle="ระบบขึ้นเป็นวันที่และเวลาปัจจุบันแบบ Real-time โดยอัตโนมัติ (สามารถเปลี่ยนเพื่อบันทึกย้อนหลังได้)"
+            />
+
+            {isPast && (
+              <div
+                className={`mt-3 p-3 rounded-xl border flex flex-wrap items-center justify-between gap-3 text-xs animate-fadeIn ${
+                  isDark
+                    ? 'bg-amber-500/10 border-amber-500/30 text-amber-300'
+                    : 'bg-amber-100/80 border-amber-300 text-amber-900'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <span className="text-base">⚠️</span>
+                  <span>
+                    กำลังบันทึกยอดขายย้อนหลังสำหรับ <strong>{formatThaiDateWithWeekday(saleDate)}</strong> (ยอดจะถูกคำนวณและสรุปในวันที่นี้)
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    sounds.playClick();
+                    setSaleDate(getTodayDateStr());
+                    setIsLiveClock(true);
+                  }}
+                  className={`px-3 py-1.5 rounded-xl font-bold transition-all text-xs btn-tactile shrink-0 ${
+                    isDark
+                      ? 'bg-amber-500 text-zinc-950 hover:bg-amber-400 shadow-sm'
+                      : 'bg-slate-900 text-white hover:bg-slate-800 shadow-sm'
+                  }`}
+                >
+                  📍 กลับสู่วันนี้ (Real-time)
+                </button>
+              </div>
+            )}
+          </div>
+
           {/* Payment Method */}
           <div>
             <div className="flex items-center justify-between mb-2">
@@ -656,8 +756,8 @@ export const TabPOS: React.FC = () => {
                 <CreditCard className="w-3.5 h-3.5 text-amber-500" />
                 <span>ช่องทางการชำระเงิน <span className="text-rose-500">*</span></span>
               </label>
-              <span className={`text-[11px] ${mutedText}`}>
-                เวลาบันทึก: {liveDate.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })} น.
+              <span className={`text-[11px] font-medium ${isPast ? 'text-amber-500 font-bold' : mutedText}`}>
+                {isPast ? '⏪ ย้อนหลัง: ' : ''}วันที่ {formatThaiDateShort(saleDate)} เวลา {saleTime} น.
               </span>
             </div>
 
@@ -756,12 +856,24 @@ export const TabPOS: React.FC = () => {
                 <span className={`text-xs uppercase tracking-wider font-bold ${mutedText}`}>
                   ยอดรวมทั้งสิ้น:
                 </span>
+                {isPast && (
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-600 dark:text-amber-300 border border-amber-500/30">
+                    ⏪ ย้อนหลัง ({formatThaiDateShort(saleDate)})
+                  </span>
+                )}
               </div>
               <p className="text-3xl sm:text-4xl font-black font-mono text-emerald-500 dark:text-emerald-400 tracking-tight">
                 {settings.currencySymbol}{grossTotal.toLocaleString()}
               </p>
               <p className={`text-[11px] ${mutedText}`}>
                 ตัดผม {settings.currencySymbol}{numHaircut.toLocaleString()} | เคมี {settings.currencySymbol}{numChemical.toLocaleString()} | สินค้า {settings.currencySymbol}{totalProductsFee.toLocaleString()} | ทิป {settings.currencySymbol}{numTip.toLocaleString()}
+              </p>
+              <p className={`text-[11px] font-medium flex items-center justify-center sm:justify-start gap-1.5 ${isPast ? 'text-amber-500 font-bold' : mutedText}`}>
+                <span>📅 บันทึกเข้าวันที่:</span>
+                <strong className={isPast ? 'text-amber-400 underline underline-offset-2' : headingText}>
+                  {formatThaiDateWithWeekday(saleDate)}
+                </strong>
+                <span>เวลา {saleTime} น.</span>
               </p>
             </div>
 

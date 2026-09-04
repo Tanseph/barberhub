@@ -21,6 +21,8 @@ export const ModalEditBill: React.FC = () => {
   const [barberId, setBarberId] = useState('');
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
+  const [billDate, setBillDate] = useState('');
+  const [billTime, setBillTime] = useState('');
   const [haircutFee, setHaircutFee] = useState<number>(0);
   const [chemicalFee, setChemicalFee] = useState<number>(0);
   const [tipFee, setTipFee] = useState<number>(0);
@@ -35,6 +37,8 @@ export const ModalEditBill: React.FC = () => {
       setBarberId(editingBill.barberId);
       setCustomerName(editingBill.customerName);
       setCustomerPhone(editingBill.customerPhone || '');
+      setBillDate(editingBill.dateStr || '');
+      setBillTime(editingBill.timeStr || '');
       setHaircutFee(editingBill.haircutFee);
       setChemicalFee(editingBill.chemicalFee);
       setTipFee(editingBill.tipFee);
@@ -77,6 +81,8 @@ export const ModalEditBill: React.FC = () => {
       barberName: selectedBarber?.nickname || selectedBarber?.name || editingBill.barberName,
       customerName: customerName.trim(),
       customerPhone: customerPhone.trim(),
+      dateStr: billDate || editingBill.dateStr,
+      timeStr: billTime || editingBill.timeStr,
       haircutFee: Number(haircutFee) || 0,
       chemicalFee: Number(chemicalFee) || 0,
       tipFee: Number(tipFee) || 0,
@@ -142,6 +148,34 @@ export const ModalEditBill: React.FC = () => {
                 </option>
               ))}
             </select>
+          </div>
+
+          {/* Bill Date & Time */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className={`block text-xs font-semibold ${mutedText} mb-1.5`}>
+                วันที่บันทึกบิล <span className="text-rose-500">*</span>
+              </label>
+              <input
+                type="date"
+                value={billDate}
+                onChange={(e) => setBillDate(e.target.value)}
+                required
+                className={`${inputClass} font-mono font-semibold`}
+              />
+            </div>
+            <div>
+              <label className={`block text-xs font-semibold ${mutedText} mb-1.5`}>
+                เวลาทำรายการ
+              </label>
+              <input
+                type="text"
+                value={billTime}
+                onChange={(e) => setBillTime(e.target.value)}
+                placeholder="14:00"
+                className={`${inputClass} font-mono`}
+              />
+            </div>
           </div>
 
           {/* Customer Name & Phone */}

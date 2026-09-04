@@ -120,8 +120,38 @@ for (let h = 0; h < 6; h++) {
   ALL_24H_TIME_OPTIONS.push(`${hh}:30`);
 }
 
-// Reusable Thai Date (วัน / เดือน / ปี พ.ศ.) Picker Component with Real-time synchronization
-const ThaiDatePicker: React.FC<{
+// Helper: Shift date string YYYY-MM-DD by delta days (+1, -1, etc.)
+export const shiftDateStr = (dateStr: string, deltaDays: number): string => {
+  try {
+    const [y, m, d] = dateStr.split('-').map(Number);
+    const date = new Date(y, m - 1, d);
+    date.setDate(date.getDate() + deltaDays);
+    const newY = date.getFullYear();
+    const newM = String(date.getMonth() + 1).padStart(2, '0');
+    const newD = String(date.getDate()).padStart(2, '0');
+    return `${newY}-${newM}-${newD}`;
+  } catch {
+    return dateStr;
+  }
+};
+
+// Helper: Format YYYY-MM-DD to full Thai Date with day of week (e.g. "วันอังคารที่ 1 กันยายน 2569")
+export const formatThaiDateWithWeekday = (dateStr?: string): string => {
+  if (!dateStr || dateStr === 'all') return 'ทุกวันที่';
+  const parts = dateStr.split('-');
+  if (parts.length !== 3) return dateStr;
+  const y = parseInt(parts[0], 10);
+  const m = parseInt(parts[1], 10);
+  const d = parseInt(parts[2], 10);
+  const dateObj = new Date(y, m - 1, d);
+  const weekdayName = dateObj.toLocaleDateString('th-TH', { weekday: 'long' });
+  const monthName = THAI_MONTHS[m - 1]?.name || `${m}`;
+  const thaiYear = y + 543;
+  return `${weekdayName}ที่ ${d} ${monthName} ${thaiYear}`;
+};
+
+// Real-time Date Picker Component: Fast, intuitive, real-time synchronized with easy single-click change
+const RealtimeDatePicker: React.FC<{
   value: string; // "YYYY-MM-DD"
   onChange: (val: string) => void;
   label?: string;
@@ -132,67 +162,84 @@ const ThaiDatePicker: React.FC<{
   const isToday = value === todayStr;
   const isTomorrow = value === tomorrowStr;
 
-  const parts = value.split('-').map(Number);
-  const curY = parts[0] || new Date().getFullYear();
-  const curM = parts[1] || new Date().getMonth() + 1;
-  const curD = parts[2] || new Date().getDate();
-
-  const daysInMonth = new Date(curY, curM, 0).getDate();
-  const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
-
-  // Thai Buddhist Years (e.g. 2567..2575 / 2024..2032)
-  const currentYear = new Date().getFullYear();
-  const years = Array.from({ length: 9 }, (_, i) => currentYear - 2 + i);
-
-  const handleDay = (d: number) => {
-    const padD = String(d).padStart(2, '0');
-    const padM = String(curM).padStart(2, '0');
-    onChange(`${curY}-${padM}-${padD}`);
-  };
-
-  const handleMonth = (m: number) => {
-    const maxDays = new Date(curY, m, 0).getDate();
-    const safeDay = Math.min(curD, maxDays);
-    const padD = String(safeDay).padStart(2, '0');
-    const padM = String(m).padStart(2, '0');
-    onChange(`${curY}-${padM}-${padD}`);
-  };
-
-  const handleYear = (y: number) => {
-    const maxDays = new Date(y, curM, 0).getDate();
-    const safeDay = Math.min(curD, maxDays);
-    const padD = String(safeDay).padStart(2, '0');
-    const padM = String(curM).padStart(2, '0');
-    onChange(`${y}-${padM}-${padD}`);
-  };
-
-  const selectClass = `px-2 py-2 rounded-xl text-xs font-bold font-mono border focus:outline-none ${
-    isDark
-      ? 'bg-zinc-900 border-zinc-700 text-zinc-100 focus:border-amber-500'
-      : 'bg-white border-slate-200 text-slate-800 focus:border-slate-800 shadow-2xs'
-  }`;
-
   return (
-    <div className="space-y-2">
+    <div className="space-y-2.5">
+      {/* Header with status badge */}
       <div className="flex items-center justify-between">
-        <label className={`text-xs font-semibold ${isDark ? 'text-zinc-300' : 'text-slate-700'} flex items-center gap-1.5`}>
-          <Calendar className="w-3.5 h-3.5 text-amber-600" />
-          <span>{label || 'วันที่จอง (วัน / เดือน / ปี)'}</span>
+        <label className={`text-xs font-bold ${isDark ? 'text-zinc-200' : 'text-slate-800'} flex items-center gap-1.5`}>
+          <Calendar className="w-4 h-4 text-amber-600" />
+          <span>{label || 'วันที่จอง'}</span>
         </label>
-        <span className={`text-[11px] font-bold px-2 py-0.5 rounded-md border ${
-          isToday
-            ? isDark
-              ? 'bg-amber-500/20 text-amber-400 border-amber-500/40'
-              : 'bg-amber-50 text-amber-800 border-amber-300'
-            : isDark
-            ? 'bg-zinc-800 text-zinc-300 border-zinc-700'
-            : 'bg-slate-100 text-slate-700 border-slate-200'
-        }`}>
-          {isToday ? '📍 วันนี้ (Real-time)' : formatThaiDateShort(value)}
+        <span
+          className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full border flex items-center gap-1 ${
+            isToday
+              ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30'
+              : isTomorrow
+              ? 'bg-sky-500/15 text-sky-600 dark:text-sky-400 border-sky-500/30'
+              : isDark
+              ? 'bg-zinc-800 text-zinc-300 border-zinc-700'
+              : 'bg-slate-100 text-slate-700 border-slate-200'
+          }`}
+        >
+          {isToday && <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-ping inline-block" />}
+          <span>{isToday ? '🔴 วันนี้ (Real-time)' : isTomorrow ? '🗓️ พรุ่งนี้' : formatThaiDateShort(value)}</span>
         </span>
       </div>
 
-      {/* Quick Date Presets */}
+      {/* Main Date Input with Prev/Next Steppers */}
+      <div className="flex items-center gap-1.5">
+        <button
+          type="button"
+          onClick={() => {
+            sounds.playClick();
+            onChange(shiftDateStr(value, -1));
+          }}
+          title="วันก่อนหน้า (-1 วัน)"
+          className={`px-2.5 py-2.5 rounded-xl border text-xs font-bold transition-all btn-tactile ${
+            isDark
+              ? 'bg-zinc-900 hover:bg-zinc-800 border-zinc-700 text-zinc-300'
+              : 'bg-white hover:bg-slate-100 border-slate-200 text-slate-700 shadow-2xs'
+          }`}
+        >
+          ◀
+        </button>
+
+        <div className="relative flex-1">
+          <input
+            type="date"
+            value={value}
+            onChange={(e) => {
+              if (e.target.value) {
+                sounds.playClick();
+                onChange(e.target.value);
+              }
+            }}
+            className={`w-full px-3.5 py-2.5 rounded-xl text-xs sm:text-sm font-bold font-mono border focus:outline-none transition-all ${
+              isDark
+                ? 'bg-zinc-950 border-zinc-700 text-zinc-100 focus:border-amber-500'
+                : 'bg-white border-slate-200 text-slate-900 focus:border-slate-800 shadow-2xs'
+            }`}
+          />
+        </div>
+
+        <button
+          type="button"
+          onClick={() => {
+            sounds.playClick();
+            onChange(shiftDateStr(value, 1));
+          }}
+          title="วันถัดไป (+1 วัน)"
+          className={`px-2.5 py-2.5 rounded-xl border text-xs font-bold transition-all btn-tactile ${
+            isDark
+              ? 'bg-zinc-900 hover:bg-zinc-800 border-zinc-700 text-zinc-300'
+              : 'bg-white hover:bg-slate-100 border-slate-200 text-slate-700 shadow-2xs'
+          }`}
+        >
+          ▶
+        </button>
+      </div>
+
+      {/* Quick Jump Buttons: วันนี้ / พรุ่งนี้ */}
       <div className="flex items-center gap-2">
         <button
           type="button"
@@ -200,18 +247,17 @@ const ThaiDatePicker: React.FC<{
             sounds.playClick();
             onChange(todayStr);
           }}
-          className={`flex-1 py-1.5 px-2.5 rounded-lg text-xs font-bold transition-all btn-tactile flex items-center justify-center gap-1 border ${
+          className={`flex-1 py-1.5 px-3 rounded-xl text-xs font-bold transition-all btn-tactile flex items-center justify-center gap-1.5 border ${
             isToday
               ? isDark
                 ? 'bg-amber-500 text-zinc-950 border-amber-500 shadow-xs'
                 : 'bg-slate-900 text-white border-slate-900 shadow-xs'
               : isDark
-              ? 'bg-zinc-900 text-zinc-300 border-zinc-800 hover:bg-zinc-800'
-              : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+              ? 'bg-zinc-900/90 text-zinc-300 border-zinc-800 hover:bg-zinc-800'
+              : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100 shadow-2xs'
           }`}
         >
-          <span>📍 วันนี้</span>
-          <span className="text-[10px] opacity-80">(Real-time)</span>
+          <span>📍 วันนี้ (Real-time)</span>
         </button>
 
         <button
@@ -220,80 +266,31 @@ const ThaiDatePicker: React.FC<{
             sounds.playClick();
             onChange(tomorrowStr);
           }}
-          className={`flex-1 py-1.5 px-2.5 rounded-lg text-xs font-bold transition-all btn-tactile flex items-center justify-center gap-1 border ${
+          className={`flex-1 py-1.5 px-3 rounded-xl text-xs font-bold transition-all btn-tactile flex items-center justify-center gap-1.5 border ${
             isTomorrow
               ? isDark
                 ? 'bg-amber-500 text-zinc-950 border-amber-500 shadow-xs'
                 : 'bg-slate-900 text-white border-slate-900 shadow-xs'
               : isDark
-              ? 'bg-zinc-900 text-zinc-300 border-zinc-800 hover:bg-zinc-800'
-              : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+              ? 'bg-zinc-900/90 text-zinc-300 border-zinc-800 hover:bg-zinc-800'
+              : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100 shadow-2xs'
           }`}
         >
           <span>🗓️ พรุ่งนี้</span>
         </button>
       </div>
 
-      {/* 3 Select Dropdowns: วัน / เดือน / ปี พ.ศ. */}
-      <div className="grid grid-cols-3 gap-1.5">
-        {/* วัน */}
-        <div>
-          <span className={`block text-[10px] font-medium ${isDark ? 'text-zinc-400' : 'text-slate-500'} mb-0.5`}>
-            วัน
-          </span>
-          <select
-            value={curD}
-            onChange={(e) => handleDay(Number(e.target.value))}
-            className={`w-full ${selectClass}`}
-          >
-            {days.map((d) => (
-              <option key={d} value={d}>
-                {d}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {/* เดือน */}
-        <div>
-          <span className={`block text-[10px] font-medium ${isDark ? 'text-zinc-400' : 'text-slate-500'} mb-0.5`}>
-            เดือน
-          </span>
-          <select
-            value={curM}
-            onChange={(e) => handleMonth(Number(e.target.value))}
-            className={`w-full ${selectClass}`}
-          >
-            {THAI_MONTHS.map((m, idx) => (
-              <option key={m.value} value={idx + 1}>
-                {m.name}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {/* ปี พ.ศ. */}
-        <div>
-          <span className={`block text-[10px] font-medium ${isDark ? 'text-zinc-400' : 'text-slate-500'} mb-0.5`}>
-            ปี (พ.ศ.)
-          </span>
-          <select
-            value={curY}
-            onChange={(e) => handleYear(Number(e.target.value))}
-            className={`w-full ${selectClass}`}
-          >
-            {years.map((y) => (
-              <option key={y} value={y}>
-                {y + 543}
-              </option>
-            ))}
-          </select>
-        </div>
+      {/* Full localized Thai Date label */}
+      <div
+        className={`p-2.5 rounded-xl border flex items-center gap-2 ${
+          isDark ? 'bg-zinc-900/50 border-zinc-800/80 text-zinc-300' : 'bg-slate-100/70 border-slate-200 text-slate-700'
+        }`}
+      >
+        <CalendarDays className="w-4 h-4 text-amber-600 shrink-0" />
+        <span className="text-xs font-bold truncate">
+          {formatThaiDateWithWeekday(value)}
+        </span>
       </div>
-
-      <p className={`text-[11px] font-medium ${isDark ? 'text-zinc-400' : 'text-slate-500'} pt-0.5`}>
-        🗓️ {formatThaiDateFull(value)}
-      </p>
     </div>
   );
 };
@@ -628,14 +625,14 @@ export const TabQueue: React.FC = () => {
               <div className={`space-y-3.5 p-4 rounded-2xl border ${
                 isDark ? 'bg-zinc-950/80 border-zinc-800' : 'bg-slate-50/90 border-slate-200'
               }`}>
-                {/* วันที่จอง (วัน / เดือน / ปี) */}
-                <ThaiDatePicker
+                {/* วันที่จอง */}
+                <RealtimeDatePicker
                   value={bookingDate}
                   onChange={(newD) => {
                     setBookingDate(newD);
                     setFilterDate(newD);
                   }}
-                  label="วันที่จอง (วัน / เดือน / ปี พ.ศ.)"
+                  label="วันที่จอง"
                   isDark={isDark}
                 />
 
@@ -714,18 +711,107 @@ export const TabQueue: React.FC = () => {
 
               {/* Filter controls */}
               <div className="flex flex-wrap items-center gap-2">
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      sounds.playClick();
+                      const current = filterDate === 'all' ? getTodayDateStr() : filterDate;
+                      setFilterDate(shiftDateStr(current, -1));
+                    }}
+                    title="วันก่อนหน้า"
+                    className={`px-2 py-1.5 rounded-lg border text-xs font-bold transition-all btn-tactile ${
+                      isDark ? 'bg-zinc-900 border-zinc-700 text-zinc-300 hover:text-white' : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                    }`}
+                  >
+                    ◀
+                  </button>
+
+                  <input
+                    type="date"
+                    value={filterDate === 'all' ? '' : filterDate}
+                    onChange={(e) => {
+                      if (e.target.value) {
+                        sounds.playClick();
+                        setFilterDate(e.target.value);
+                      }
+                    }}
+                    className={`px-2.5 py-1 rounded-lg border text-xs font-mono font-bold focus:outline-none ${
+                      isDark ? 'bg-zinc-950 border-zinc-700 text-zinc-200' : 'bg-slate-50 border-slate-200 text-slate-800'
+                    }`}
+                  />
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      sounds.playClick();
+                      const current = filterDate === 'all' ? getTodayDateStr() : filterDate;
+                      setFilterDate(shiftDateStr(current, 1));
+                    }}
+                    title="วันถัดไป"
+                    className={`px-2 py-1.5 rounded-lg border text-xs font-bold transition-all btn-tactile ${
+                      isDark ? 'bg-zinc-900 border-zinc-700 text-zinc-300 hover:text-white' : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                    }`}
+                  >
+                    ▶
+                  </button>
+                </div>
+
                 <button
                   type="button"
                   onClick={() => {
-                    const d = new Date();
-                    const todayStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-                    setFilterDate(todayStr);
+                    sounds.playClick();
+                    setFilterDate(getTodayDateStr());
                   }}
-                  className={`px-2.5 py-1.5 rounded-lg border text-xs font-semibold btn-tactile ${
-                    isDark ? 'bg-zinc-900 border-zinc-700 text-zinc-300 hover:text-white' : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                  className={`px-2.5 py-1.5 rounded-lg border text-xs font-bold btn-tactile ${
+                    filterDate === getTodayDateStr()
+                      ? isDark
+                        ? 'bg-amber-500 text-zinc-950 border-amber-500 shadow-xs'
+                        : 'bg-slate-900 text-white border-slate-900 shadow-xs'
+                      : isDark
+                      ? 'bg-zinc-900 border-zinc-700 text-zinc-300 hover:text-white'
+                      : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
                   }`}
                 >
                   📍 วันนี้
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    sounds.playClick();
+                    setFilterDate(getTomorrowDateStr());
+                  }}
+                  className={`px-2.5 py-1.5 rounded-lg border text-xs font-bold btn-tactile ${
+                    filterDate === getTomorrowDateStr()
+                      ? isDark
+                        ? 'bg-amber-500 text-zinc-950 border-amber-500 shadow-xs'
+                        : 'bg-slate-900 text-white border-slate-900 shadow-xs'
+                      : isDark
+                      ? 'bg-zinc-900 border-zinc-700 text-zinc-300 hover:text-white'
+                      : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                  }`}
+                >
+                  🗓️ พรุ่งนี้
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    sounds.playClick();
+                    setFilterDate('all');
+                  }}
+                  className={`px-2.5 py-1.5 rounded-lg border text-xs font-bold btn-tactile ${
+                    filterDate === 'all'
+                      ? isDark
+                        ? 'bg-amber-500 text-zinc-950 border-amber-500 shadow-xs'
+                        : 'bg-slate-900 text-white border-slate-900 shadow-xs'
+                      : isDark
+                      ? 'bg-zinc-900 border-zinc-700 text-zinc-300 hover:text-white'
+                      : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                  }`}
+                >
+                  ทุกวัน
                 </button>
 
                 <select
@@ -961,13 +1047,13 @@ export const TabQueue: React.FC = () => {
               <div className={`space-y-3.5 p-4 rounded-2xl border ${
                 isDark ? 'bg-zinc-950/80 border-zinc-800' : 'bg-slate-50/90 border-slate-200'
               }`}>
-                <ThaiDatePicker
+                <RealtimeDatePicker
                   value={leaveDate}
                   onChange={(newD) => {
                     setLeaveDate(newD);
                     setFilterDate(newD);
                   }}
-                  label="วันที่ลา / ปิดคิว (วัน / เดือน / ปี พ.ศ.)"
+                  label="วันที่ลา / ปิดคิว"
                   isDark={isDark}
                 />
 
@@ -1020,22 +1106,95 @@ export const TabQueue: React.FC = () => {
                   รายการปิดคิว & วันหยุดช่าง ({visibleQueues.length} รายการ)
                 </h3>
                 <p className={`text-xs ${mutedText} mt-0.5`}>
-                  วันที่: <span className="font-bold text-rose-500">{formatThaiDateFull(filterDate)}</span>
+                  วันที่: <span className="font-bold text-rose-500">{formatThaiDateWithWeekday(filterDate)}</span>
                 </p>
               </div>
-              <button
-                type="button"
-                onClick={() => {
-                  const d = new Date();
-                  const todayStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-                  setFilterDate(todayStr);
-                }}
-                className={`px-2.5 py-1.5 rounded-lg border text-xs font-semibold btn-tactile ${
-                  isDark ? 'bg-zinc-900 border-zinc-700 text-zinc-300 hover:text-white' : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
-                }`}
-              >
-                📍 วันนี้
-              </button>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      sounds.playClick();
+                      const current = filterDate === 'all' ? getTodayDateStr() : filterDate;
+                      setFilterDate(shiftDateStr(current, -1));
+                    }}
+                    title="วันก่อนหน้า"
+                    className={`px-2 py-1.5 rounded-lg border text-xs font-bold transition-all btn-tactile ${
+                      isDark ? 'bg-zinc-900 border-zinc-700 text-zinc-300 hover:text-white' : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                    }`}
+                  >
+                    ◀
+                  </button>
+
+                  <input
+                    type="date"
+                    value={filterDate === 'all' ? '' : filterDate}
+                    onChange={(e) => {
+                      if (e.target.value) {
+                        sounds.playClick();
+                        setFilterDate(e.target.value);
+                      }
+                    }}
+                    className={`px-2.5 py-1 rounded-lg border text-xs font-mono font-bold focus:outline-none ${
+                      isDark ? 'bg-zinc-950 border-zinc-700 text-zinc-200' : 'bg-slate-50 border-slate-200 text-slate-800'
+                    }`}
+                  />
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      sounds.playClick();
+                      const current = filterDate === 'all' ? getTodayDateStr() : filterDate;
+                      setFilterDate(shiftDateStr(current, 1));
+                    }}
+                    title="วันถัดไป"
+                    className={`px-2 py-1.5 rounded-lg border text-xs font-bold transition-all btn-tactile ${
+                      isDark ? 'bg-zinc-900 border-zinc-700 text-zinc-300 hover:text-white' : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                    }`}
+                  >
+                    ▶
+                  </button>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    sounds.playClick();
+                    setFilterDate(getTodayDateStr());
+                  }}
+                  className={`px-2.5 py-1.5 rounded-lg border text-xs font-bold btn-tactile ${
+                    filterDate === getTodayDateStr()
+                      ? isDark
+                        ? 'bg-amber-500 text-zinc-950 border-amber-500 shadow-xs'
+                        : 'bg-slate-900 text-white border-slate-900 shadow-xs'
+                      : isDark
+                      ? 'bg-zinc-900 border-zinc-700 text-zinc-300 hover:text-white'
+                      : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                  }`}
+                >
+                  📍 วันนี้
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    sounds.playClick();
+                    setFilterDate(getTomorrowDateStr());
+                  }}
+                  className={`px-2.5 py-1.5 rounded-lg border text-xs font-bold btn-tactile ${
+                    filterDate === getTomorrowDateStr()
+                      ? isDark
+                        ? 'bg-amber-500 text-zinc-950 border-amber-500 shadow-xs'
+                        : 'bg-slate-900 text-white border-slate-900 shadow-xs'
+                      : isDark
+                      ? 'bg-zinc-900 border-zinc-700 text-zinc-300 hover:text-white'
+                      : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                  }`}
+                >
+                  🗓️ พรุ่งนี้
+                </button>
+              </div>
             </div>
 
             <div className="space-y-3">
