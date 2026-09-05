@@ -192,7 +192,8 @@ interface AppContextType {
     haircutFee: number,
     chemicalFee: number,
     products: BillProductItem[],
-    tipFee: number
+    tipFee: number,
+    totalDiscountAmount?: number
   ) => BillCommission;
 
   resetAllDataToSample: () => void;
@@ -235,7 +236,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     if (storageKeys) {
       try {
         const saved = localStorage.getItem(storageKeys.SETTINGS);
-        if (saved) return JSON.parse(saved);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (!parsed.voucherPresetAmounts || parsed.voucherPresetAmounts.length === 0) {
+            parsed.voucherPresetAmounts = [50, 100, 200, 300, 500];
+          }
+          return parsed;
+        }
       } catch (e) {
         console.error(e);
       }
@@ -375,7 +382,15 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     try {
       const savedSettings = localStorage.getItem(keys.SETTINGS);
-      setSettings(savedSettings ? JSON.parse(savedSettings) : CLEAN_SETTINGS);
+      if (savedSettings) {
+        const parsed = JSON.parse(savedSettings);
+        if (!parsed.voucherPresetAmounts || parsed.voucherPresetAmounts.length === 0) {
+          parsed.voucherPresetAmounts = [50, 100, 200, 300, 500];
+        }
+        setSettings(parsed);
+      } else {
+        setSettings(CLEAN_SETTINGS);
+      }
 
       const savedBarbers = localStorage.getItem(keys.BARBERS);
       setBarbers(savedBarbers ? JSON.parse(savedBarbers) : []);
@@ -595,16 +610,15 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           prevUserAccountStatusRef.current = cloudAcc.status;
           saveUserAccountToCloud({ ...cloudAcc, lastLoginAt: Date.now() }).catch(console.error);
         } else {
-          const isSuper = isSuperAdmin(cleanEmail);
           const initialAcc: UserAccount = {
             email: cleanEmail,
             shopId: getShopIdFromEmail(cleanEmail),
-            status: isSuper ? 'approved' : 'pending',
-            role: isSuper ? 'admin' : 'user',
+            status: 'approved',
+            role: 'user',
             registeredAt: Date.now(),
             lastLoginAt: Date.now(),
             shopName: 'Unknow Barber shop',
-            planName: 'แพ็กเกจรายเดือน',
+            planName: 'แพ็กเกจมาตรฐาน',
           };
           setCurrentUserAccount(initialAcc);
           prevUserAccountStatusRef.current = initialAcc.status;
@@ -890,7 +904,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     haircutFee: number,
     chemicalFee: number,
     productsList: BillProductItem[],
-    tipFee: number
+    tipFee: number,
+    totalDiscountAmount?: number
   ): BillCommission => {
     const barber = barbers.find((b) => b.id === barberId);
     const haircutRate = barber?.haircutCommissionRate ?? settings.defaultHaircutCommission;
@@ -900,6 +915,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     const totalProductFee = productsList.reduce((sum, p) => sum + p.total, 0);
 
+    // Barber receives commission on FULL fees (ช่างได้ส่วนแบ่งเต็มเท่าเดิม ไม่โดนหัก)
     const barberHaircutEarned = (haircutFee * haircutRate) / 100;
     const barberChemicalEarned = (chemicalFee * chemicalRate) / 100;
     const barberProductEarned = (totalProductFee * productRate) / 100;
@@ -907,7 +923,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     const barberTotalEarned =
       barberHaircutEarned + barberChemicalEarned + barberProductEarned + barberTipEarned;
-    const grossTotal = haircutFee + chemicalFee + totalProductFee + tipFee;
+    const subtotal = haircutFee + chemicalFee + totalProductFee + tipFee;
+    const discount = totalDiscountAmount || 0;
+    const grossTotal = Math.max(0, subtotal - discount);
+    // ทางร้านรับผิดชอบส่วนลดเอง (หักออกจากส่วนของร้าน)
     const shopNetEarned = grossTotal - barberTotalEarned;
 
     return {
@@ -948,7 +967,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         billData.haircutFee,
         billData.chemicalFee,
         billData.products,
-        billData.tipFee
+        billData.tipFee,
+        billData.totalDiscountAmount
       );
 
     let billTimestamp = billData.timestamp;
@@ -1033,6 +1053,16 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       const next = prev.map((bill) => {
         if (bill.id === id) {
           const updated = { ...bill, ...updates };
+          if (!updates.commission) {
+            updated.commission = calculateCommission(
+              updated.barberId,
+              updated.haircutFee,
+              updated.chemicalFee,
+              updated.products || [],
+              updated.tipFee,
+              updated.totalDiscountAmount
+            );
+          }
           if (currentShopId) {
             saveDocumentToCloud(currentShopId, 'bills', updated).catch(console.error);
           }

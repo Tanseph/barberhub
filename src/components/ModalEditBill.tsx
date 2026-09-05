@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { PaymentMethod } from '../types';
-import { X, Save, Link2, Unlink } from 'lucide-react';
+import { X, Save, Link2, Unlink, Percent, Gift, Tag } from 'lucide-react';
 import { ModalMergeBills } from './ModalMergeBills';
 
 export const ModalEditBill: React.FC = () => {
@@ -26,6 +26,9 @@ export const ModalEditBill: React.FC = () => {
   const [haircutFee, setHaircutFee] = useState<number>(0);
   const [chemicalFee, setChemicalFee] = useState<number>(0);
   const [tipFee, setTipFee] = useState<number>(0);
+  const [hasHaircutPromo10, setHasHaircutPromo10] = useState<boolean>(false);
+  const [voucherDiscount, setVoucherDiscount] = useState<number>(0);
+  const [voucherCode, setVoucherCode] = useState<string>('');
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash');
   const [cashAmount, setCashAmount] = useState<number>(0);
   const [transferAmount, setTransferAmount] = useState<number>(0);
@@ -42,6 +45,9 @@ export const ModalEditBill: React.FC = () => {
       setHaircutFee(editingBill.haircutFee);
       setChemicalFee(editingBill.chemicalFee);
       setTipFee(editingBill.tipFee);
+      setHasHaircutPromo10(editingBill.hasHaircutDiscount10 ?? false);
+      setVoucherDiscount(editingBill.voucherDiscountAmount ?? 0);
+      setVoucherCode(editingBill.voucherCode || '');
       setPaymentMethod(editingBill.paymentMethod);
       setCashAmount(editingBill.cashAmount);
       setTransferAmount(editingBill.transferAmount);
@@ -58,7 +64,13 @@ export const ModalEditBill: React.FC = () => {
     : [];
 
   const productTotal = editingBill.totalProductsFee;
-  const currentGross = (Number(haircutFee) || 0) + (Number(chemicalFee) || 0) + productTotal + (Number(tipFee) || 0);
+  const subtotalBeforeDiscount =
+    (Number(haircutFee) || 0) + (Number(chemicalFee) || 0) + productTotal + (Number(tipFee) || 0);
+  const haircutDiscountAmount =
+    hasHaircutPromo10 && Number(haircutFee) > 0 ? Math.round(Number(haircutFee) * 0.1) : 0;
+  const rawTotalDiscount = haircutDiscountAmount + (Number(voucherDiscount) || 0);
+  const totalDiscountAmount = Math.min(subtotalBeforeDiscount, rawTotalDiscount);
+  const currentGross = Math.max(0, subtotalBeforeDiscount - totalDiscountAmount);
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
@@ -86,6 +98,12 @@ export const ModalEditBill: React.FC = () => {
       haircutFee: Number(haircutFee) || 0,
       chemicalFee: Number(chemicalFee) || 0,
       tipFee: Number(tipFee) || 0,
+      hasHaircutDiscount10: hasHaircutPromo10 && Number(haircutFee) > 0,
+      haircutDiscountAmount,
+      voucherCode: voucherCode.trim() || undefined,
+      voucherDiscountAmount: Number(voucherDiscount) || 0,
+      totalDiscountAmount,
+      subtotalBeforeDiscount,
       grossTotal: currentGross,
       paymentMethod,
       cashAmount: finalCash,
@@ -245,6 +263,109 @@ export const ModalEditBill: React.FC = () => {
                 className={`${inputClass} font-semibold text-amber-600`}
               />
             </div>
+          </div>
+
+          {/* Promotion & Gift Voucher in Edit Modal */}
+          <div className={`p-3.5 rounded-xl border space-y-3 ${
+            isDark ? 'bg-zinc-950/60 border-zinc-800' : 'bg-slate-50 border-slate-200'
+          }`}>
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-amber-500 flex items-center gap-1.5">
+                <Tag className="w-3.5 h-3.5" />
+                <span>โปรโมชั่นและส่วนลด (ร้านรับผิดชอบเอง • ช่างได้ส่วนแบ่งเต็ม)</span>
+              </span>
+            </div>
+
+            {/* 10% Haircut Promo Toggle */}
+            <label className="flex items-center gap-2.5 cursor-pointer text-xs">
+              <input
+                type="checkbox"
+                checked={hasHaircutPromo10}
+                onChange={(e) => setHasHaircutPromo10(e.target.checked)}
+                className="w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500 accent-emerald-500 cursor-pointer"
+              />
+              <span className={`font-semibold ${headingText}`}>
+                โปรโมชั่นลด 10% ค่าตัดผม
+              </span>
+              {hasHaircutPromo10 && haircutDiscountAmount > 0 && (
+                <span className="text-emerald-500 font-mono font-bold text-xs ml-auto">
+                  -{settings.currencySymbol}{haircutDiscountAmount.toLocaleString()}
+                </span>
+              )}
+            </label>
+
+            {/* Gift Voucher Presets from Settings */}
+            <div className="pt-2 border-t border-zinc-800/40 space-y-1.5">
+              <div className="flex items-center justify-between">
+                <label className={`block text-[11px] font-semibold ${mutedText} flex items-center gap-1`}>
+                  <Gift className="w-3.5 h-3.5 text-indigo-400" />
+                  <span>Gift Voucher (บัตรของขวัญ / คูปองเงินสด)</span>
+                </label>
+                {voucherDiscount > 0 && (
+                  <span className="text-indigo-400 font-mono font-bold text-xs">
+                    -{settings.currencySymbol}{voucherDiscount.toLocaleString()}
+                  </span>
+                )}
+              </div>
+
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setVoucherDiscount(0);
+                    setVoucherCode('');
+                  }}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all btn-tactile ${
+                    voucherDiscount === 0
+                      ? isDark
+                        ? 'bg-zinc-800 text-zinc-200 border border-zinc-600 font-bold'
+                        : 'bg-slate-200 text-slate-900 border border-slate-300 font-bold'
+                      : isDark
+                      ? 'bg-zinc-950/60 text-zinc-500 hover:text-zinc-300 border border-zinc-800'
+                      : 'bg-white text-slate-500 hover:text-slate-800 border border-slate-200'
+                  }`}
+                >
+                  ✕ ไม่ใช้ Voucher
+                </button>
+                {(settings.voucherPresetAmounts && settings.voucherPresetAmounts.length > 0
+                  ? settings.voucherPresetAmounts
+                  : [50, 100, 200, 300, 500]
+                ).map((val) => {
+                  const isSelected = voucherDiscount === val;
+                  return (
+                    <button
+                      key={val}
+                      type="button"
+                      onClick={() => {
+                        if (isSelected) {
+                          setVoucherDiscount(0);
+                          setVoucherCode('');
+                        } else {
+                          setVoucherDiscount(val);
+                          setVoucherCode(`Voucher ${settings.currencySymbol}${val}`);
+                        }
+                      }}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-mono font-bold transition-all btn-tactile ${
+                        isSelected
+                          ? 'bg-indigo-600 text-white shadow-xs ring-1 ring-indigo-400'
+                          : isDark
+                          ? 'bg-zinc-900 text-zinc-300 hover:bg-zinc-800 border border-zinc-700'
+                          : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200'
+                      }`}
+                    >
+                      {settings.currencySymbol}{val}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {totalDiscountAmount > 0 && (
+              <div className="text-[11px] text-amber-500 bg-amber-500/10 p-2 rounded-lg border border-amber-500/20 flex justify-between items-center">
+                <span>รวมส่วนลดร้านออกให้:</span>
+                <span className="font-mono font-bold">-{settings.currencySymbol}{totalDiscountAmount.toLocaleString()}</span>
+              </div>
+            )}
           </div>
 
           {/* Products Summary */}
@@ -443,11 +564,25 @@ export const ModalEditBill: React.FC = () => {
           </div>
 
           {/* Total Bar */}
-          <div className="flex items-center justify-between p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/20">
-            <span className={`text-xs font-bold ${headingText}`}>ยอดรวมบิลใหม่</span>
-            <span className="text-lg font-black text-amber-600 font-mono">
-              {settings.currencySymbol}{currentGross.toLocaleString()}
-            </span>
+          <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/20 space-y-1">
+            <div className="flex items-center justify-between">
+              <span className={`text-xs font-bold ${headingText}`}>ยอดสุทธิที่ลูกค้าชำระ</span>
+              <div className="flex items-baseline gap-2">
+                {totalDiscountAmount > 0 && (
+                  <span className="text-xs line-through text-zinc-500 font-mono">
+                    {settings.currencySymbol}{subtotalBeforeDiscount.toLocaleString()}
+                  </span>
+                )}
+                <span className="text-xl font-black text-amber-500 font-mono">
+                  {settings.currencySymbol}{currentGross.toLocaleString()}
+                </span>
+              </div>
+            </div>
+            {totalDiscountAmount > 0 && (
+              <p className="text-[11px] text-amber-600 dark:text-amber-400">
+                🏷️ หักส่วนลดร้านแล้ว {settings.currencySymbol}{totalDiscountAmount.toLocaleString()} (ช่างได้ค่าคอมมิชชั่นคิดจากยอดเต็ม {settings.currencySymbol}{subtotalBeforeDiscount.toLocaleString()})
+              </p>
+            )}
           </div>
 
           {/* Actions */}

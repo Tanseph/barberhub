@@ -10,9 +10,7 @@ import {
   Clock,
   Wallet,
   Cloud,
-  LogOut,
-  ShieldCheck,
-  Crown,
+  FileText,
 } from 'lucide-react';
 
 export const Header: React.FC = () => {
@@ -24,11 +22,7 @@ export const Header: React.FC = () => {
     queues,
     theme,
     currentUserEmail,
-    logout,
     cloudSyncStatus,
-    isCurrentUserAdmin,
-    allUserAccounts,
-    openAdminPanel,
   } = useApp();
 
   const [currentTime, setCurrentTime] = useState<Date>(new Date());
@@ -45,8 +39,6 @@ export const Header: React.FC = () => {
   const todayExpenses = expenses.filter((e) => e.dateStr === todayStr);
   const todayQueues = queues.filter((q) => q.date === todayStr && !q.isLeaveOrBlocked);
   const waitingQueues = todayQueues.filter((q) => q.status === 'waiting' || q.status === 'in_progress').length;
-
-  const pendingApprovalsCount = allUserAccounts.filter((u) => u.status === 'pending').length;
 
   const tabs: { id: TabType; label: string; icon: React.ReactNode; badge?: string }[] = [
     {
@@ -71,6 +63,11 @@ export const Header: React.FC = () => {
       label: 'รายจ่ายร้าน',
       icon: <Wallet className="w-4 h-4" />,
       badge: todayExpenses.length > 0 ? `${todayExpenses.length}` : undefined,
+    },
+    {
+      id: 'payslip',
+      label: 'สลิปเงินเดือน',
+      icon: <FileText className="w-4 h-4" />,
     },
     {
       id: 'settings',
@@ -141,33 +138,8 @@ export const Header: React.FC = () => {
             </div>
           </div>
 
-          {/* Right Header Section: Cloud Sync & User Account & Admin SaaS Button */}
+          {/* Right Header Section: Cloud Sync */}
           <div className="flex items-center gap-2 sm:gap-3 w-full sm:w-auto justify-end">
-            {/* Admin Management Button */}
-            {isCurrentUserAdmin && (
-              <button
-                type="button"
-                onClick={openAdminPanel}
-                className={`relative flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold text-xs border transition-all btn-tactile ${
-                  pendingApprovalsCount > 0
-                    ? 'bg-amber-500 hover:bg-amber-400 text-zinc-950 border-amber-400 shadow-md shadow-amber-500/20'
-                    : isDark
-                    ? 'bg-amber-500/10 hover:bg-amber-500/20 border-amber-500/30 text-amber-400'
-                    : 'bg-amber-50 hover:bg-amber-100 border-amber-300 text-amber-900'
-                }`}
-                title="เปิดระบบจัดการสมาชิกและอนุมัติผู้ใช้งาน"
-              >
-                <Crown className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">จัดการสมาชิก</span>
-                <span className="sm:hidden">Admin</span>
-                {pendingApprovalsCount > 0 && (
-                  <span className="px-1.5 py-0.2 rounded-full text-[10px] font-black bg-rose-600 text-white animate-bounce">
-                    {pendingApprovalsCount}
-                  </span>
-                )}
-              </button>
-            )}
-
             {/* Cloud Sync Status Indicator (Small) */}
             <div className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border text-xs shadow-xs ${
               isDark

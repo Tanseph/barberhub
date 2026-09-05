@@ -21,6 +21,8 @@ import {
   Calculator,
   Percent,
   Calendar,
+  Gift,
+  Tag,
 } from 'lucide-react';
 import { sounds } from '../utils/sound';
 import {
@@ -74,6 +76,10 @@ export const TabPOS: React.FC = () => {
   const [productQtyToAdd, setProductQtyToAdd] = useState<string>('');
   const [selectedProducts, setSelectedProducts] = useState<BillProductItem[]>([]);
 
+  // Promotion & Gift Voucher State
+  const [hasHaircutPromo10, setHasHaircutPromo10] = useState<boolean>(false);
+  const [selectedPresetVoucher, setSelectedPresetVoucher] = useState<number | null>(null);
+
   // Notes & Payment State
   const [notes, setNotes] = useState<string>('');
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('transfer');
@@ -118,8 +124,27 @@ export const TabPOS: React.FC = () => {
   // Total products amount
   const totalProductsFee = selectedProducts.reduce((sum, p) => sum + p.total, 0);
 
-  // Gross total
-  const grossTotal = numHaircut + numChemical + totalProductsFee + numTip;
+  // Subtotal before any discounts
+  const subtotalBeforeDiscount = numHaircut + numChemical + totalProductsFee + numTip;
+
+  // 1. Haircut 10% Discount (ร้านรับผิดชอบเอง ช่างได้คอมมิชชั่นเต็ม)
+  const haircutDiscountAmount = hasHaircutPromo10 && numHaircut > 0
+    ? Math.round(numHaircut * 0.1)
+    : 0;
+
+  // 2. Gift Voucher Discount (ร้านรับผิดชอบเอง ช่างได้คอมมิชชั่นเต็ม)
+  const voucherOptions =
+    settings.voucherPresetAmounts && settings.voucherPresetAmounts.length > 0
+      ? settings.voucherPresetAmounts
+      : [50, 100, 200, 300, 500];
+  const effectiveVoucherAmount = selectedPresetVoucher ? selectedPresetVoucher : 0;
+
+  // Total discounts
+  const rawTotalDiscount = haircutDiscountAmount + effectiveVoucherAmount;
+  const totalDiscountAmount = Math.min(subtotalBeforeDiscount, rawTotalDiscount);
+
+  // Net gross total payable by customer
+  const grossTotal = Math.max(0, subtotalBeforeDiscount - totalDiscountAmount);
 
   // Auto-balance split payments
   useEffect(() => {
@@ -202,13 +227,14 @@ export const TabPOS: React.FC = () => {
     setCashInputStr(rem > 0 ? String(rem) : '0');
   };
 
-  // Realtime commission estimate
+  // Realtime commission estimate (ช่างได้ส่วนแบ่งเต็ม 100% ไม่โดนหัก, ร้านรับผิดชอบส่วนลดเอง)
   const commissionPreview = calculateCommission(
     selectedBarberId,
     numHaircut,
     numChemical,
     selectedProducts,
-    numTip
+    numTip,
+    totalDiscountAmount
   );
 
   // Product actions
@@ -306,10 +332,17 @@ export const TabPOS: React.FC = () => {
       tipFee: numTip,
       products: selectedProducts,
       totalProductsFee,
+      hasHaircutDiscount10: hasHaircutPromo10 && numHaircut > 0,
+      haircutDiscountAmount: hasHaircutPromo10 ? haircutDiscountAmount : 0,
+      voucherCode: effectiveVoucherAmount > 0 ? `Voucher ${settings.currencySymbol}${effectiveVoucherAmount}` : undefined,
+      voucherDiscountAmount: effectiveVoucherAmount > 0 ? effectiveVoucherAmount : 0,
+      totalDiscountAmount,
+      subtotalBeforeDiscount,
       grossTotal,
       paymentMethod,
       cashAmount: finalCash,
       transferAmount: finalTransfer,
+      commission: commissionPreview,
       notes: notes.trim() || undefined,
       queueId: activeQueueId,
     });
@@ -322,6 +355,8 @@ export const TabPOS: React.FC = () => {
     setSelectedProductDropdownId('');
     setProductQtyToAdd('');
     setSelectedProducts([]);
+    setHasHaircutPromo10(false);
+    setSelectedPresetVoucher(null);
     setNotes('');
     setActiveQueueId(undefined);
     clearPendingQueueToPos();
@@ -665,7 +700,213 @@ export const TabPOS: React.FC = () => {
           )}
         </div>
 
-        {/* 5. NOTES (BLANK FIELD AS REQUESTED), DATE/TIME & PAYMENT METHOD */}
+        {/* 5. PROMOTIONS & GIFT VOUCHERS (SHOP ABSORBS DISCOUNT, BARBER RECEIVES FULL COMMISSION) */}
+        <div className={`${cardBg} rounded-2xl p-5 border ${borderSubtle} shadow-sm space-y-4`}>
+          <div className="flex items-center justify-between">
+            <label className="flex items-center gap-2 text-xs font-bold text-amber-500">
+              <Tag className="w-4 h-4 text-amber-500" />
+              <span>โปรโมชั่นและบัตรของขวัญ (ทางร้านรับผิดชอบเอง • ช่างได้ส่วนแบ่งเต็ม)</span>
+            </label>
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+              🛡️ ช่างได้ส่วนแบ่งเต็ม 100%
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* 1. Haircut 10% Promotion Box */}
+            <div
+              className={`p-4 rounded-xl border transition-all ${
+                hasHaircutPromo10
+                  ? isDark
+                    ? 'border-emerald-500/60 bg-emerald-500/10 shadow-sm'
+                    : 'border-emerald-500 bg-emerald-50/80 shadow-xs'
+                  : isDark
+                  ? 'border-zinc-800 bg-zinc-950/40 hover:border-zinc-700'
+                  : 'border-slate-200 bg-slate-50/60 hover:border-slate-300'
+              }`}
+            >
+              <label className="flex items-start gap-3 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={hasHaircutPromo10}
+                  onChange={(e) => {
+                    sounds.playClick();
+                    setHasHaircutPromo10(e.target.checked);
+                  }}
+                  className="mt-1 w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500 border-zinc-400 cursor-pointer accent-emerald-500"
+                />
+                <div className="flex-1">
+                  <div className="flex items-center justify-between">
+                    <span className={`text-xs font-bold flex items-center gap-1.5 ${headingText}`}>
+                      <Percent className="w-3.5 h-3.5 text-emerald-500" />
+                      <span>โปรโมชั่นลด 10% ค่าตัดผม</span>
+                    </span>
+                    {hasHaircutPromo10 && haircutDiscountAmount > 0 && (
+                      <span className="text-xs font-mono font-bold text-emerald-500 dark:text-emerald-400">
+                        -{settings.currencySymbol}{haircutDiscountAmount.toLocaleString()}
+                      </span>
+                    )}
+                  </div>
+                  <p className={`text-[11px] mt-1 ${mutedText}`}>
+                    ลดเฉพาะค่าตัดผม 10% ให้ลูกค้า (ร้านออกให้ ช่างได้เต็ม)
+                  </p>
+
+                  {numHaircut > 0 ? (
+                    <div className={`mt-2 pt-2 border-t text-[11px] space-y-1 ${
+                      isDark ? 'border-zinc-800' : 'border-slate-200'
+                    }`}>
+                      <div className="flex justify-between">
+                        <span className={mutedText}>ราคาตัดผมปกติ:</span>
+                        <span className="font-mono">{settings.currencySymbol}{numHaircut.toLocaleString()}</span>
+                      </div>
+                      {hasHaircutPromo10 && (
+                        <>
+                          <div className="flex justify-between text-emerald-600 dark:text-emerald-400 font-semibold">
+                            <span>ส่วนลด 10% (ร้านรับผิดชอบ):</span>
+                            <span className="font-mono">-{settings.currencySymbol}{haircutDiscountAmount.toLocaleString()}</span>
+                          </div>
+                          <div className="flex justify-between font-bold">
+                            <span className={headingText}>ลูกค้าจ่ายค่าตัดผมเพียง:</span>
+                            <span className="font-mono text-emerald-500">
+                              {settings.currencySymbol}{(numHaircut - haircutDiscountAmount).toLocaleString()}
+                            </span>
+                          </div>
+                          <div className="text-[10px] text-amber-600 dark:text-amber-400 bg-amber-500/10 px-2 py-1 rounded-md border border-amber-500/20 mt-1">
+                            ✂️ ช่างยังได้รับค่าคอมมิชชั่นเต็มจากยอด {settings.currencySymbol}{numHaircut.toLocaleString()} ตามปกติ
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="text-[10px] text-zinc-400 mt-1.5 italic">
+                      * ระบุราคาค่าตัดผมด้านบนเพื่อใช้งานโปรโมชั่น
+                    </p>
+                  )}
+                </div>
+              </label>
+            </div>
+
+            {/* 2. Gift Voucher Selection (ตั้งค่าจากในตั้งค่า มีแค่ให้เลือกกี่บาท หรือไม่ใช้) */}
+            <div
+              className={`p-4 rounded-xl border transition-all ${
+                effectiveVoucherAmount > 0
+                  ? isDark
+                    ? 'border-indigo-500/60 bg-indigo-500/10 shadow-sm'
+                    : 'border-indigo-400 bg-indigo-50/80 shadow-xs'
+                  : isDark
+                  ? 'border-zinc-800 bg-zinc-950/40 hover:border-zinc-700'
+                  : 'border-slate-200 bg-slate-50/60 hover:border-slate-300'
+              }`}
+            >
+              <div className="flex items-center justify-between mb-2">
+                <span className={`text-xs font-bold flex items-center gap-1.5 ${headingText}`}>
+                  <Gift className="w-3.5 h-3.5 text-indigo-500" />
+                  <span>Gift Voucher (บัตรของขวัญ / คูปองเงินสด)</span>
+                </span>
+                {effectiveVoucherAmount > 0 && (
+                  <span className="text-[11px] font-bold text-indigo-500 font-mono">
+                    ลด -{settings.currencySymbol}{effectiveVoucherAmount.toLocaleString()}
+                  </span>
+                )}
+              </div>
+
+              {/* Selector buttons only: ไม่ใช้ or configured amounts */}
+              <div className="space-y-2">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  {/* Option: Do not use voucher */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      sounds.playClick();
+                      setSelectedPresetVoucher(null);
+                    }}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all btn-tactile ${
+                      selectedPresetVoucher === null
+                        ? isDark
+                          ? 'bg-zinc-800 text-zinc-200 border border-zinc-600 font-bold shadow-xs'
+                          : 'bg-slate-200 text-slate-900 border border-slate-300 font-bold shadow-xs'
+                        : isDark
+                        ? 'bg-zinc-950/60 text-zinc-500 hover:text-zinc-300 border border-zinc-800'
+                        : 'bg-white text-slate-500 hover:text-slate-800 border border-slate-200'
+                    }`}
+                  >
+                    ✕ ไม่ใช้ Voucher
+                  </button>
+
+                  {/* Configured preset amounts from Settings */}
+                  {voucherOptions.map((val) => {
+                    const isSelected = selectedPresetVoucher === val;
+                    return (
+                      <button
+                        key={val}
+                        type="button"
+                        onClick={() => {
+                          sounds.playClick();
+                          if (isSelected) {
+                            setSelectedPresetVoucher(null);
+                          } else {
+                            setSelectedPresetVoucher(val);
+                          }
+                        }}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-mono font-bold transition-all btn-tactile ${
+                          isSelected
+                            ? 'bg-indigo-600 text-white shadow-sm ring-2 ring-indigo-500/40'
+                            : isDark
+                            ? 'bg-zinc-800/90 text-zinc-300 hover:bg-zinc-700 hover:text-white border border-zinc-700/70'
+                            : 'bg-white text-slate-700 hover:bg-slate-100 hover:text-slate-900 border border-slate-200'
+                        }`}
+                      >
+                        {settings.currencySymbol}{val.toLocaleString()}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {effectiveVoucherAmount > 0 ? (
+                  <div className="text-[10px] text-indigo-600 dark:text-indigo-400 bg-indigo-500/10 px-2.5 py-1.5 rounded-md border border-indigo-500/20 mt-1 flex items-center justify-between">
+                    <span>🎁 ใช้ Gift Voucher ลด {settings.currencySymbol}{effectiveVoucherAmount.toLocaleString()} (ทางร้านรับผิดชอบเอง ช่างได้ส่วนแบ่งเต็ม)</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        sounds.playClick();
+                        setSelectedPresetVoucher(null);
+                      }}
+                      className="text-rose-500 hover:underline font-semibold ml-2"
+                    >
+                      ยกเลิก
+                    </button>
+                  </div>
+                ) : (
+                  <p className={`text-[10px] ${mutedText} pt-0.5`}>
+                    กดเลือกมูลค่า Voucher ที่ลูกค้าต้องการใช้ หรือกด 'ไม่ใช้ Voucher' (สามารถกำหนดมูลค่าได้ที่เมนู "ตั้งค่าร้าน")
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Combined Discounts Summary */}
+          {totalDiscountAmount > 0 && (
+            <div className={`p-3 rounded-xl border flex flex-wrap items-center justify-between gap-2 text-xs ${
+              isDark ? 'bg-amber-500/10 border-amber-500/30' : 'bg-amber-50 border-amber-200'
+            }`}>
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-amber-500 shrink-0" />
+                <span className={headingText}>
+                  รวมส่วนลดที่ร้านออกให้: <strong className="text-amber-500 font-mono text-sm">-{settings.currencySymbol}{totalDiscountAmount.toLocaleString()}</strong>
+                  <span className={`text-[11px] ${mutedText} ml-2`}>
+                    (ตัดผม 10%: -{settings.currencySymbol}{haircutDiscountAmount} | Voucher: -{settings.currencySymbol}{effectiveVoucherAmount})
+                  </span>
+                </span>
+              </div>
+              <span className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-md border border-emerald-500/20">
+                ✂️ ช่างรับคอมมิชชั่นเต็ม {settings.currencySymbol}{commissionPreview.barberTotalEarned.toLocaleString()}
+              </span>
+            </div>
+          )}
+        </div>
+
+        {/* 6. NOTES (BLANK FIELD AS REQUESTED), DATE/TIME & PAYMENT METHOD */}
         <div className={`${cardBg} rounded-2xl p-5 border ${borderSubtle} shadow-sm space-y-5`}>
           {/* Notes: Empty blank field with no placeholder */}
           <div>
@@ -843,7 +1084,7 @@ export const TabPOS: React.FC = () => {
           </div>
         </div>
 
-        {/* 6. TOTAL & SUBMIT BAR */}
+        {/* 7. TOTAL & SUBMIT BAR */}
         <div className={`rounded-2xl p-5 border shadow-xl transition-all ${
           isDark
             ? 'bg-zinc-900 border-amber-500/40 shadow-black/60'
@@ -852,22 +1093,52 @@ export const TabPOS: React.FC = () => {
           <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
             {/* Left summary */}
             <div className="space-y-1 text-center sm:text-left w-full sm:w-auto">
-              <div className="flex items-center justify-center sm:justify-start gap-2">
+              <div className="flex items-center justify-center sm:justify-start gap-2 flex-wrap">
                 <span className={`text-xs uppercase tracking-wider font-bold ${mutedText}`}>
-                  ยอดรวมทั้งสิ้น:
+                  ยอดสุทธิที่ลูกค้าชำระ:
                 </span>
+                {totalDiscountAmount > 0 && (
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-600 dark:text-amber-300 border border-amber-500/30">
+                    🏷️ ส่วนลดรวม {settings.currencySymbol}{totalDiscountAmount.toLocaleString()}
+                  </span>
+                )}
                 {isPast && (
                   <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-600 dark:text-amber-300 border border-amber-500/30">
                     ⏪ ย้อนหลัง ({formatThaiDateShort(saleDate)})
                   </span>
                 )}
               </div>
-              <p className="text-3xl sm:text-4xl font-black font-mono text-emerald-500 dark:text-emerald-400 tracking-tight">
-                {settings.currencySymbol}{grossTotal.toLocaleString()}
-              </p>
+              <div className="flex items-baseline justify-center sm:justify-start gap-2">
+                <p className="text-3xl sm:text-4xl font-black font-mono text-emerald-500 dark:text-emerald-400 tracking-tight">
+                  {settings.currencySymbol}{grossTotal.toLocaleString()}
+                </p>
+                {totalDiscountAmount > 0 && (
+                  <span className={`text-sm font-mono line-through ${mutedText}`}>
+                    {settings.currencySymbol}{subtotalBeforeDiscount.toLocaleString()}
+                  </span>
+                )}
+              </div>
               <p className={`text-[11px] ${mutedText}`}>
-                ตัดผม {settings.currencySymbol}{numHaircut.toLocaleString()} | เคมี {settings.currencySymbol}{numChemical.toLocaleString()} | สินค้า {settings.currencySymbol}{totalProductsFee.toLocaleString()} | ทิป {settings.currencySymbol}{numTip.toLocaleString()}
+                ตัดผม {settings.currencySymbol}{numHaircut.toLocaleString()}
+                {haircutDiscountAmount > 0 && ` (ลด 10% เหลือ ${numHaircut - haircutDiscountAmount})`}
+                {numChemical > 0 && ` | เคมี ${settings.currencySymbol}${numChemical.toLocaleString()}`}
+                {totalProductsFee > 0 && ` | สินค้า ${settings.currencySymbol}${totalProductsFee.toLocaleString()}`}
+                {effectiveVoucherAmount > 0 && ` | Voucher -${settings.currencySymbol}${effectiveVoucherAmount.toLocaleString()}`}
+                {numTip > 0 && ` | ทิป ${settings.currencySymbol}${numTip.toLocaleString()}`}
               </p>
+              {/* Commission Transparency Box */}
+              <div className={`text-[11px] font-medium pt-0.5 flex flex-wrap items-center justify-center sm:justify-start gap-x-3 gap-y-1 ${
+                isDark ? 'text-zinc-300' : 'text-slate-700'
+              }`}>
+                <span>
+                  ✂️ <strong>{currentBarber?.nickname || 'ช่าง'}:</strong> ได้รับเต็ม <strong className="text-emerald-500 dark:text-emerald-400 font-mono font-bold">{settings.currencySymbol}{commissionPreview.barberTotalEarned.toLocaleString()}</strong>
+                </span>
+                <span className={mutedText}>•</span>
+                <span>
+                  🏢 <strong>ร้านสุทธิ:</strong> <strong className="font-mono font-bold text-amber-500">{settings.currencySymbol}{commissionPreview.shopNetEarned.toLocaleString()}</strong>
+                  {totalDiscountAmount > 0 && <span className="text-[10px] text-amber-600 dark:text-amber-400 ml-1">(ร้านออกส่วนลดให้)</span>}
+                </span>
+              </div>
               <p className={`text-[11px] font-medium flex items-center justify-center sm:justify-start gap-1.5 ${isPast ? 'text-amber-500 font-bold' : mutedText}`}>
                 <span>📅 บันทึกเข้าวันที่:</span>
                 <strong className={isPast ? 'text-amber-400 underline underline-offset-2' : headingText}>

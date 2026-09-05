@@ -10,25 +10,20 @@ import { TabPOS } from './components/TabPOS';
 import { TabDashboard } from './components/TabDashboard';
 import { TabQueue } from './components/TabQueue';
 import { TabExpenses } from './components/TabExpenses';
+import { TabPayslip } from './components/TabPayslip';
 import { TabSettings } from './components/TabSettings';
 import { ToastContainer } from './components/ToastContainer';
 import { ModalConfirm } from './components/ModalConfirm';
 import { ModalReceipt } from './components/ModalReceipt';
 import { ModalEditBill } from './components/ModalEditBill';
-import { ModalAdminManagement } from './components/ModalAdminManagement';
 import { LoginScreen } from './components/LoginScreen';
-import { PendingApprovalScreen } from './components/PendingApprovalScreen';
 
 const MainLayout: React.FC = () => {
   const {
     activeTab,
     theme,
     currentUserEmail,
-    currentUserAccount,
-    isCurrentUserAdmin,
     login,
-    logout,
-    refreshUserStatus,
   } = useApp();
 
   // If no user is logged in, show the Email Login Screen
@@ -36,22 +31,6 @@ const MainLayout: React.FC = () => {
     return (
       <div className={`min-h-screen ${theme.bgMain} font-sans`}>
         <LoginScreen onLogin={login} themeDark={theme.isDark} />
-        <ToastContainer />
-      </div>
-    );
-  }
-
-  // If user is pending approval or blocked, show PendingApprovalScreen (unless they are Super Admin)
-  if (!isCurrentUserAdmin && (currentUserAccount?.status === 'pending' || currentUserAccount?.status === 'blocked')) {
-    return (
-      <div className={`min-h-screen ${theme.bgMain} font-sans`}>
-        <PendingApprovalScreen
-          userAccount={currentUserAccount}
-          email={currentUserEmail}
-          themeDark={theme.isDark}
-          onRefresh={refreshUserStatus}
-          onLogout={logout}
-        />
         <ToastContainer />
       </div>
     );
@@ -68,6 +47,7 @@ const MainLayout: React.FC = () => {
         {activeTab === 'dashboard' && <TabDashboard />}
         {activeTab === 'queue' && <TabQueue />}
         {activeTab === 'expenses' && <TabExpenses />}
+        {activeTab === 'payslip' && <TabPayslip />}
         {activeTab === 'settings' && <TabSettings />}
       </main>
 
@@ -87,7 +67,6 @@ const MainLayout: React.FC = () => {
       {/* Global Modals & Notifications */}
       <ModalReceipt />
       <ModalEditBill />
-      <ModalAdminManagement />
       <ModalConfirm />
       <ToastContainer />
     </div>

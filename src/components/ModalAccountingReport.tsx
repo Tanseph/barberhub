@@ -62,6 +62,9 @@ export const ModalAccountingReport: React.FC<ModalAccountingReportProps> = ({
   const totalChemRev = periodBills.reduce((s, b) => s + b.chemicalFee, 0);
   const totalProdRev = periodBills.reduce((s, b) => s + b.totalProductsFee, 0);
   const totalTipRev = periodBills.reduce((s, b) => s + b.tipFee, 0);
+  const totalDiscounts = periodBills.reduce((s, b) => s + (b.totalDiscountAmount || 0), 0);
+  const totalHaircutDiscount = periodBills.reduce((s, b) => s + (b.haircutDiscountAmount || 0), 0);
+  const totalVoucherDiscount = periodBills.reduce((s, b) => s + (b.voucherDiscountAmount || 0), 0);
   const totalGross = periodBills.reduce((s, b) => s + b.grossTotal, 0);
 
   const totalHaircutComm = periodBills.reduce((s, b) => s + b.commission.barberHaircutEarned, 0);
@@ -131,7 +134,9 @@ export const ModalAccountingReport: React.FC<ModalAccountingReportProps> = ({
       'ค่าเคมี',
       'ค่าสินค้า',
       'ค่าทิป',
-      'ยอดรวมบิล',
+      'ส่วนลด 10% ตัดผม',
+      'ส่วนลด Voucher',
+      'ยอดสุทธิบิล',
       'วิธีชำระเงิน',
       'ยอดเงินสด',
       'ยอดเงินโอน',
@@ -152,6 +157,8 @@ export const ModalAccountingReport: React.FC<ModalAccountingReportProps> = ({
       b.chemicalFee,
       b.totalProductsFee,
       b.tipFee,
+      b.haircutDiscountAmount || 0,
+      b.voucherDiscountAmount || 0,
       b.grossTotal,
       b.paymentMethod === 'transfer' ? 'เงินโอน' : b.paymentMethod === 'cash' ? 'เงินสด' : 'สลับ (สด+โอน)',
       b.cashAmount,
@@ -318,6 +325,12 @@ export const ModalAccountingReport: React.FC<ModalAccountingReportProps> = ({
                   <span>• เงินทิป:</span>
                   <span className="font-mono font-semibold">{settings.currencySymbol}{totalTipRev.toLocaleString()}</span>
                 </div>
+                {totalDiscounts > 0 && (
+                  <div className="flex justify-between text-rose-500 font-medium">
+                    <span>• ส่วนลดร้านออกให้:</span>
+                    <span className="font-mono font-semibold">-{settings.currencySymbol}{totalDiscounts.toLocaleString()}</span>
+                  </div>
+                )}
                 <div className="pt-2 mt-2 border-t border-slate-200 dark:border-zinc-800 flex justify-between font-bold text-sm text-amber-600 dark:text-amber-400">
                   <span>ยอดขายรวม:</span>
                   <span className="font-mono">{settings.currencySymbol}{totalGross.toLocaleString()}</span>

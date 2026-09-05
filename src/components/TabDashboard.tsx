@@ -29,6 +29,10 @@ import {
   Layers,
   ChevronLeft,
   ChevronRight,
+  Gift,
+  Tag,
+  Sparkles,
+  ShoppingBag,
 } from 'lucide-react';
 import { sounds } from '../utils/sound';
 import { ModalAccountingReport } from './ModalAccountingReport';
@@ -189,6 +193,13 @@ export const TabDashboard: React.FC = () => {
   const totalChemicals = allPeriodBills.filter((b) => b.chemicalFee > 0).length;
   const periodTransferBills = allPeriodBills.filter((b) => b.paymentMethod === 'transfer' || (b.paymentMethod === 'split' && b.transferAmount > 0)).length;
   const periodCashBills = allPeriodBills.filter((b) => b.paymentMethod === 'cash' || (b.paymentMethod === 'split' && b.cashAmount > 0)).length;
+
+  const totalDiscounts = allPeriodBills.reduce((s, b) => s + (b.totalDiscountAmount || 0), 0);
+  const totalHaircutDiscount = allPeriodBills.reduce((s, b) => s + (b.haircutDiscountAmount || 0), 0);
+  const totalVoucherDiscount = allPeriodBills.reduce((s, b) => s + (b.voucherDiscountAmount || 0), 0);
+  const promoHaircutCount = allPeriodBills.filter((b) => b.hasHaircutDiscount10).length;
+  const voucherCount = allPeriodBills.filter((b) => (b.voucherDiscountAmount || 0) > 0).length;
+  const totalProductsCount = allPeriodBills.reduce((s, b) => s + b.products.reduce((ps, p) => ps + p.quantity, 0), 0);
 
   const totalHaircutComm = allPeriodBills.reduce((s, b) => s + b.commission.barberHaircutEarned, 0);
   const totalChemicalComm = allPeriodBills.reduce((s, b) => s + b.commission.barberChemicalEarned, 0);
@@ -716,76 +727,70 @@ export const TabDashboard: React.FC = () => {
         </div>
       </div>
 
-      {/* 2. FOUR HIGH-IMPACT HERO KPI CARDS (CLEAN & INTUITIVE) */}
+      {/* 2. FOUR HIGH-IMPACT HERO KPI CARDS (CLEAN, INTUITIVE & CRISP) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
         {/* Card 1: ยอดขายรวม (Gross Sales) */}
         <div className={`p-4 sm:p-5 rounded-2xl border transition-all ${
-          isDark ? 'bg-zinc-900/90 border-amber-500/25' : 'bg-white border-slate-200 shadow-2xs'
+          isDark ? 'bg-zinc-900/90 border-amber-500/30 shadow-xs' : 'bg-white border-slate-200 shadow-xs'
         }`}>
           <div className="flex items-center justify-between mb-1.5">
-            <span className={`text-xs font-bold ${mutedText}`}>
-              💰 ยอดขายรวมทั้งหมด
+            <span className={`text-xs font-bold ${mutedText} flex items-center gap-1.5`}>
+              <DollarSign className="w-3.5 h-3.5 text-amber-500" />
+              <span>ยอดขายรวมทั้งหมด</span>
             </span>
-            <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-amber-500/15 text-amber-600">
+            <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-amber-500/15 text-amber-600 dark:text-amber-400">
               {viewMode === 'daily' ? 'รายวัน' : 'รอบบิล'}
             </span>
           </div>
 
-          <div className="text-2xl sm:text-3xl font-black font-mono text-amber-600 tracking-tight">
+          <div className="text-2xl sm:text-3xl font-black font-mono text-amber-500 tracking-tight">
             {settings.currencySymbol}{totalGrossRevenue.toLocaleString()}
           </div>
 
-          {/* Transfer vs Cash Visual Progress bar */}
-          <div className="mt-3 pt-2.5 border-t border-zinc-800/40 dark:border-zinc-800/80 space-y-1.5">
-            <div className="flex items-center justify-between text-[11px] font-mono">
-              <span className="text-sky-600 font-bold flex items-center gap-1">
-                📱 โอน ฿{totalTransfer.toLocaleString()} ({transferPercent}%)
-              </span>
-              <span className="text-emerald-600 font-bold flex items-center gap-1">
-                💵 สด ฿{totalCash.toLocaleString()} ({cashPercent}%)
-              </span>
-            </div>
-            <div className="h-1.5 w-full rounded-full bg-zinc-800/30 overflow-hidden flex">
-              <div style={{ width: `${transferPercent}%` }} className="bg-sky-500 h-full" />
-              <div style={{ width: `${cashPercent}%` }} className="bg-emerald-500 h-full" />
-            </div>
+          <div className={`mt-2.5 pt-2.5 border-t ${borderSubtle} flex items-center justify-between text-[11px] font-mono`}>
+            <span className="text-sky-600 dark:text-sky-400 font-semibold">📱 โอน ฿{totalTransfer.toLocaleString()}</span>
+            <span className="text-emerald-600 dark:text-emerald-400 font-semibold">💵 สด ฿{totalCash.toLocaleString()}</span>
           </div>
         </div>
 
         {/* Card 2: กำไรสุทธิร้าน (Shop Net Income) */}
         <div className={`p-4 sm:p-5 rounded-2xl border transition-all ${
-          isDark ? 'bg-zinc-900/90 border-purple-500/25' : 'bg-white border-slate-200 shadow-2xs'
+          isDark ? 'bg-zinc-900/90 border-purple-500/30 shadow-xs' : 'bg-white border-slate-200 shadow-xs'
         }`}>
           <div className="flex items-center justify-between mb-1.5">
-            <span className={`text-xs font-bold ${mutedText}`}>
-              🏢 กำไรสุทธิส่วนของร้าน
+            <span className={`text-xs font-bold ${mutedText} flex items-center gap-1.5`}>
+              <CheckCircle2 className="w-3.5 h-3.5 text-purple-500" />
+              <span>กำไรสุทธิส่วนของร้าน</span>
             </span>
-            <span className="text-[10px] px-2 py-0.5 rounded-full font-mono font-bold bg-purple-500/15 text-purple-600">
+            <span className="text-[10px] px-2 py-0.5 rounded-full font-mono font-bold bg-purple-500/15 text-purple-600 dark:text-purple-400">
               กำไร {shopProfitMargin}%
             </span>
           </div>
 
           <div className={`text-2xl sm:text-3xl font-black font-mono tracking-tight ${
-            finalShopNetAfterExpenses >= 0 ? 'text-purple-600' : 'text-rose-500'
+            finalShopNetAfterExpenses >= 0 ? 'text-purple-600 dark:text-purple-400' : 'text-rose-500'
           }`}>
             {settings.currencySymbol}{finalShopNetAfterExpenses.toLocaleString()}
           </div>
 
-          <div className={`mt-3 pt-2.5 border-t border-zinc-800/40 dark:border-zinc-800/80 flex items-center justify-between text-[11px] ${mutedText}`}>
-            <span>ก่อนหัก คชจ. ร้าน: ฿{totalShopNet.toLocaleString()}</span>
-            {totalShopExpenses > 0 && (
-              <span className="text-rose-500 font-mono">คชจ. -฿{totalShopExpenses.toLocaleString()}</span>
+          <div className={`mt-2.5 pt-2.5 border-t ${borderSubtle} flex items-center justify-between text-[11px] ${mutedText}`}>
+            <span>เข้าร้าน: ฿{totalShopNet.toLocaleString()}</span>
+            {totalShopExpenses > 0 ? (
+              <span className="text-rose-500 font-mono">หัก คชจ. -฿{totalShopExpenses.toLocaleString()}</span>
+            ) : (
+              <span className="text-emerald-500 text-[10px]">ยังไม่มีรายจ่ายร้าน</span>
             )}
           </div>
         </div>
 
         {/* Card 3: รวมจ่ายช่าง (Barber Payroll) */}
         <div className={`p-4 sm:p-5 rounded-2xl border transition-all ${
-          isDark ? 'bg-zinc-900/90 border-rose-500/25' : 'bg-white border-slate-200 shadow-2xs'
+          isDark ? 'bg-zinc-900/90 border-rose-500/30 shadow-xs' : 'bg-white border-slate-200 shadow-xs'
         }`}>
           <div className="flex items-center justify-between mb-1.5">
-            <span className={`text-xs font-bold ${mutedText}`}>
-              ✂️ จ่ายส่วนแบ่งช่าง (Payroll)
+            <span className={`text-xs font-bold ${mutedText} flex items-center gap-1.5`}>
+              <Scissors className="w-3.5 h-3.5 text-rose-500" />
+              <span>จ่ายส่วนแบ่งช่างรวม</span>
             </span>
             <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-rose-500/15 text-rose-500">
               {barbers.length} ช่าง
@@ -796,37 +801,204 @@ export const TabDashboard: React.FC = () => {
             {settings.currencySymbol}{totalBarberPayout.toLocaleString()}
           </div>
 
-          <div className={`mt-3 pt-2.5 border-t border-zinc-800/40 dark:border-zinc-800/80 flex items-center justify-between text-[11px] ${mutedText}`}>
-            <span>ส่วนแบ่งตัด/เคมี/ของ: ฿{(totalHaircutComm + totalChemicalComm + totalProductsComm).toLocaleString()}</span>
+          <div className={`mt-2.5 pt-2.5 border-t ${borderSubtle} flex items-center justify-between text-[11px] ${mutedText}`}>
+            <span>ค่าคอมฯ รวม: ฿{(totalHaircutComm + totalChemicalComm + totalProductsComm).toLocaleString()}</span>
             {totalTipsPayout > 0 && (
-              <span className="text-amber-600 font-mono">ทิป ฿{totalTipsPayout.toLocaleString()}</span>
+              <span className="text-amber-500 font-mono font-bold">ทิป ฿{totalTipsPayout.toLocaleString()}</span>
             )}
           </div>
         </div>
 
         {/* Card 4: จำนวนลูกค้า (Customer Count) */}
         <div className={`p-4 sm:p-5 rounded-2xl border transition-all ${
-          isDark ? 'bg-zinc-900/90 border-sky-500/25' : 'bg-white border-slate-200 shadow-2xs'
+          isDark ? 'bg-zinc-900/90 border-sky-500/30 shadow-xs' : 'bg-white border-slate-200 shadow-xs'
         }`}>
           <div className="flex items-center justify-between mb-1.5">
-            <span className={`text-xs font-bold ${mutedText}`}>
-              💈 จำนวนลูกค้า & บิล
+            <span className={`text-xs font-bold ${mutedText} flex items-center gap-1.5`}>
+              <Users className="w-3.5 h-3.5 text-sky-500" />
+              <span>จำนวนลูกค้า & บิล</span>
             </span>
-            <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-sky-500/15 text-sky-600">
+            <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-sky-500/15 text-sky-600 dark:text-sky-400">
               เฉลี่ย ฿{avgTicketValue}/บิล
             </span>
           </div>
 
-          <div className="text-2xl sm:text-3xl font-black font-mono text-sky-600 tracking-tight">
+          <div className="text-2xl sm:text-3xl font-black font-mono text-sky-500 tracking-tight">
             {periodHeads} <span className="text-sm font-normal text-zinc-400">หัว</span>
             <span className={`text-xs font-medium ${mutedText} ml-2 font-sans`}>({allPeriodBills.length} บิล)</span>
           </div>
 
-          <div className={`mt-3 pt-2.5 border-t border-zinc-800/40 dark:border-zinc-800/80 flex items-center justify-between text-[11px] ${mutedText}`}>
-            <span>ตัดผม: <strong className="text-zinc-200">{totalHaircuts}</strong> หัว</span>
-            <span>เคมี/ทำสี: <strong className="text-zinc-200">{totalChemicals}</strong> รายการ</span>
+          <div className={`mt-2.5 pt-2.5 border-t ${borderSubtle} flex items-center justify-between text-[11px] ${mutedText}`}>
+            <span>ตัดผม: <strong className={headingText}>{totalHaircuts}</strong> หัว</span>
+            <span>เคมี: <strong className={headingText}>{totalChemicals}</strong> | ของ: <strong className={headingText}>{totalProductsCount}</strong></span>
           </div>
         </div>
+      </div>
+
+      {/* 2.5 EASY-TO-UNDERSTAND SHOP SALES & CASH FLOW BREAKDOWN (แผงสรุปยอดขายของร้าน ดูง่าย เข้าใจทันที) */}
+      <div className={`rounded-2xl p-4 sm:p-5 border ${borderSubtle} ${theme.bgCard} space-y-3.5 shadow-xs`}>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div>
+            <h3 className={`text-sm sm:text-base font-bold ${headingText} flex items-center gap-2`}>
+              <Receipt className="w-4 h-4 text-amber-500" />
+              <span>สรุปยอดขายของร้าน แยกตามประเภทบริการ & ช่องทางรับเงิน</span>
+            </h3>
+            <p className={`text-xs ${mutedText} mt-0.5`}>
+              ดูเข้าใจง่ายในที่เดียว ยอดแยกตัดผม เคมี สินค้า ทิป ส่วนลดที่ร้านออกให้ และเงินโอน/เงินสด
+            </p>
+          </div>
+          {totalDiscounts > 0 && (
+            <div className="flex items-center gap-1.5 px-3 py-1 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-600 dark:text-amber-400 text-xs font-bold">
+              <Tag className="w-3.5 h-3.5" />
+              <span>ร้านออกส่วนลดให้ลูกค้ารวม: -{settings.currencySymbol}{totalDiscounts.toLocaleString()}</span>
+            </div>
+          )}
+        </div>
+
+        {/* Categories Grid */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
+          {/* Item 1: ตัดผม */}
+          <div className={`p-3 rounded-xl border ${isDark ? 'bg-zinc-950/60 border-zinc-800' : 'bg-slate-50/80 border-slate-200'}`}>
+            <div className="flex items-center justify-between text-xs mb-1">
+              <span className={`font-semibold ${mutedText} flex items-center gap-1`}>
+                <Scissors className="w-3 h-3 text-amber-500" />
+                <span>ค่าตัดผม</span>
+              </span>
+              <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-amber-500/10 text-amber-500 font-bold">
+                {totalHaircuts} หัว
+              </span>
+            </div>
+            <div className="text-base sm:text-lg font-black font-mono text-zinc-100 dark:text-zinc-100 text-slate-900">
+              {settings.currencySymbol}{totalHaircutRev.toLocaleString()}
+            </div>
+            {promoHaircutCount > 0 ? (
+              <div className="text-[10px] text-emerald-500 font-medium mt-0.5">
+                🏷️ ใช้โปร 10% ({promoHaircutCount} หัว)
+              </div>
+            ) : (
+              <div className={`text-[10px] ${mutedText} mt-0.5`}>บริการสระ/ตัด/เซ็ต</div>
+            )}
+          </div>
+
+          {/* Item 2: เคมี */}
+          <div className={`p-3 rounded-xl border ${isDark ? 'bg-zinc-950/60 border-zinc-800' : 'bg-slate-50/80 border-slate-200'}`}>
+            <div className="flex items-center justify-between text-xs mb-1">
+              <span className={`font-semibold ${mutedText} flex items-center gap-1`}>
+                <Sparkles className="w-3 h-3 text-purple-400" />
+                <span>เคมี / ดัด / สี</span>
+              </span>
+              <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-purple-500/10 text-purple-400 font-bold">
+                {totalChemicals} รายการ
+              </span>
+            </div>
+            <div className="text-base sm:text-lg font-black font-mono text-zinc-100 dark:text-zinc-100 text-slate-900">
+              {settings.currencySymbol}{totalChemicalRev.toLocaleString()}
+            </div>
+            <div className={`text-[10px] ${mutedText} mt-0.5`}>
+              ทรีทเม้นท์ & ดัดย้อม
+            </div>
+          </div>
+
+          {/* Item 3: สินค้า */}
+          <div className={`p-3 rounded-xl border ${isDark ? 'bg-zinc-950/60 border-zinc-800' : 'bg-slate-50/80 border-slate-200'}`}>
+            <div className="flex items-center justify-between text-xs mb-1">
+              <span className={`font-semibold ${mutedText} flex items-center gap-1`}>
+                <ShoppingBag className="w-3 h-3 text-blue-400" />
+                <span>ขายสินค้า</span>
+              </span>
+              <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-blue-500/10 text-blue-400 font-bold">
+                {totalProductsCount} ชิ้น
+              </span>
+            </div>
+            <div className="text-base sm:text-lg font-black font-mono text-zinc-100 dark:text-zinc-100 text-slate-900">
+              {settings.currencySymbol}{totalProductsRev.toLocaleString()}
+            </div>
+            <div className={`text-[10px] ${mutedText} mt-0.5`}>
+              แว็กซ์, โพเมด, แชมพู
+            </div>
+          </div>
+
+          {/* Item 4: ทิปช่าง */}
+          <div className={`p-3 rounded-xl border ${isDark ? 'bg-zinc-950/60 border-zinc-800' : 'bg-slate-50/80 border-slate-200'}`}>
+            <div className="flex items-center justify-between text-xs mb-1">
+              <span className={`font-semibold ${mutedText} flex items-center gap-1`}>
+                <Sparkles className="w-3 h-3 text-amber-400" />
+                <span>ทิปช่าง</span>
+              </span>
+            </div>
+            <div className="text-base sm:text-lg font-black font-mono text-amber-500">
+              {settings.currencySymbol}{totalTipsRev.toLocaleString()}
+            </div>
+            <div className={`text-[10px] ${mutedText} mt-0.5`}>
+              ส่งมอบช่าง 100%
+            </div>
+          </div>
+
+          {/* Item 5: เงินโอนเข้าบัญชี */}
+          <div className={`p-3 rounded-xl border ${isDark ? 'bg-sky-950/20 border-sky-500/30' : 'bg-sky-50/70 border-sky-200'}`}>
+            <div className="flex items-center justify-between text-xs mb-1">
+              <span className="font-bold text-sky-600 dark:text-sky-400 flex items-center gap-1">
+                <CreditCard className="w-3 h-3" />
+                <span>เงินโอนเข้าบัญชี</span>
+              </span>
+              <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-sky-500/20 text-sky-500 font-bold">
+                {transferPercent}%
+              </span>
+            </div>
+            <div className="text-base sm:text-lg font-black font-mono text-sky-600 dark:text-sky-400">
+              {settings.currencySymbol}{totalTransfer.toLocaleString()}
+            </div>
+            <div className="text-[10px] text-sky-600/80 dark:text-sky-400/80 font-medium mt-0.5">
+              📱 {periodTransferBills} บิลที่โอน
+            </div>
+          </div>
+
+          {/* Item 6: เงินสดในลิ้นชัก */}
+          <div className={`p-3 rounded-xl border ${isDark ? 'bg-emerald-950/20 border-emerald-500/30' : 'bg-emerald-50/70 border-emerald-200'}`}>
+            <div className="flex items-center justify-between text-xs mb-1">
+              <span className="font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                <Banknote className="w-3 h-3" />
+                <span>เงินสดในลิ้นชัก</span>
+              </span>
+              <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-500 font-bold">
+                {cashPercent}%
+              </span>
+            </div>
+            <div className="text-base sm:text-lg font-black font-mono text-emerald-600 dark:text-emerald-400">
+              {settings.currencySymbol}{totalCash.toLocaleString()}
+            </div>
+            <div className="text-[10px] text-emerald-600/80 dark:text-emerald-400/80 font-medium mt-0.5">
+              💵 {periodCashBills} บิลที่ใช้สด
+            </div>
+          </div>
+        </div>
+
+        {/* Promotion & Voucher Notice strip (if any discount was used in the period) */}
+        {totalDiscounts > 0 && (
+          <div className={`p-2.5 rounded-xl border flex flex-wrap items-center justify-between gap-2 text-xs ${
+            isDark ? 'bg-amber-950/20 border-amber-500/30 text-amber-300' : 'bg-amber-50 border-amber-200 text-amber-900'
+          }`}>
+            <div className="flex items-center gap-2">
+              <Gift className="w-4 h-4 text-amber-500 shrink-0" />
+              <span>
+                <strong>สรุปโปรโมชั่น & Voucher:</strong>
+                {totalHaircutDiscount > 0 && (
+                  <span className="ml-1.5">
+                    ✂️ ลด 10% ตัดผม <strong>฿{totalHaircutDiscount.toLocaleString()}</strong> ({promoHaircutCount} บิล)
+                  </span>
+                )}
+                {totalVoucherDiscount > 0 && (
+                  <span className="ml-1.5">
+                    🎁 Gift Voucher <strong>฿{totalVoucherDiscount.toLocaleString()}</strong> ({voucherCount} บิล)
+                  </span>
+                )}
+              </span>
+            </div>
+            <span className="text-[11px] font-medium opacity-90">
+              *ทางร้านรับผิดชอบส่วนลดนี้ ช่างได้รับส่วนแบ่งคิดจากยอดเต็มตามปกติ
+            </span>
+          </div>
+        )}
       </div>
 
       {/* 3. SECTION SELECTOR TABS (CLEAN NAVIGATION) */}
@@ -1124,153 +1296,208 @@ export const TabDashboard: React.FC = () => {
                 <table className="w-full text-left text-xs">
                   <thead className={`border-b font-semibold ${tableHeaderBg}`}>
                     <tr>
-                      <th className="py-3 px-3">บิล / เวลา</th>
-                      <th className="py-3 px-3">ลูกค้า</th>
-                      <th className="py-3 px-3">ช่าง</th>
-                      <th className="py-3 px-3 text-right">ตัดผม</th>
-                      <th className="py-3 px-3 text-right">เคมี</th>
-                      <th className="py-3 px-3 text-right">สินค้า</th>
-                      <th className="py-3 px-3 text-right">ทิป</th>
-                      <th className="py-3 px-3 text-right font-bold text-amber-600">ยอดรวม</th>
-                      <th className="py-3 px-3 text-center">วิธีชำระ (สลับด่วน)</th>
-                      <th className="py-3 px-3 text-right text-rose-500">จ่ายช่าง</th>
-                      <th className="py-3 px-3 text-right text-purple-600">กำไรร้าน</th>
-                      <th className="py-3 px-3 text-center">จัดการ</th>
+                      <th className="py-3 px-3.5">บิล & เวลา</th>
+                      <th className="py-3 px-3.5">ลูกค้า & ช่าง</th>
+                      <th className="py-3 px-3.5">รายการบริการ & ส่วนลด</th>
+                      <th className="py-3 px-3.5 text-right font-bold text-amber-500">ยอดที่ลูกค้าจ่าย</th>
+                      <th className="py-3 px-3.5 text-center">ช่องทางชำระ (สลับด่วน)</th>
+                      <th className="py-3 px-3.5 text-right">การแบ่งเงิน (ช่าง / ร้าน)</th>
+                      <th className="py-3 px-3.5 text-center">จัดการ</th>
                     </tr>
                   </thead>
                   <tbody className={`divide-y ${isDark ? 'divide-zinc-800/60' : 'divide-slate-200/80'}`}>
                     {filteredDailyBills.length === 0 ? (
                       <tr>
-                        <td colSpan={12} className={`py-8 text-center ${mutedText}`}>
+                        <td colSpan={7} className={`py-10 text-center ${mutedText}`}>
                           ไม่พบบันทึกบิลในวันที่ {selectedDate}
                         </td>
                       </tr>
                     ) : (
-                      filteredDailyBills.map((bill) => (
-                        <tr key={bill.id} className={tableRowBg}>
-                          <td className="py-2.5 px-3">
-                            <span className="font-mono font-bold text-amber-600 block">{bill.billNumber}</span>
-                            <span className={`text-[10px] ${mutedText}`}>{bill.timeStr} น.</span>
-                          </td>
+                      filteredDailyBills.map((bill) => {
+                        const hasDiscount = (bill.totalDiscountAmount || 0) > 0;
+                        const subtotalBefore = bill.subtotalBeforeDiscount || (bill.grossTotal + (bill.totalDiscountAmount || 0));
 
-                          <td className={`py-2.5 px-3 font-semibold ${headingText}`}>
-                            <span>{bill.customerName}</span>
-                            {bill.mergedGroupId && (
-                              <div className="mt-0.5">
-                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-indigo-500/15 text-indigo-400 border border-indigo-500/30">
-                                  <Link2 className="w-2.5 h-2.5" />
-                                  <span>{bill.mergedGroupName || 'รวมบิล'}</span>
-                                </span>
+                        return (
+                          <tr key={bill.id} className={`${tableRowBg} transition-colors`}>
+                            {/* 1. บิล & เวลา */}
+                            <td className="py-3 px-3.5 whitespace-nowrap">
+                              <span className="font-mono font-bold text-amber-500 block text-xs">{bill.billNumber}</span>
+                              <span className={`text-[11px] font-mono ${mutedText}`}>{bill.timeStr} น.</span>
+                              {bill.mergedGroupId && (
+                                <div className="mt-1">
+                                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-indigo-500/15 text-indigo-400 border border-indigo-500/30">
+                                    <Link2 className="w-2.5 h-2.5" />
+                                    <span>{bill.mergedGroupName || 'รวมบิล'}</span>
+                                  </span>
+                                </div>
+                              )}
+                            </td>
+
+                            {/* 2. ลูกค้า & ช่าง */}
+                            <td className="py-3 px-3.5">
+                              <div className={`font-semibold ${headingText} text-xs`}>{bill.customerName}</div>
+                              {bill.customerPhone && (
+                                <div className={`text-[10px] font-mono ${mutedText}`}>{bill.customerPhone}</div>
+                              )}
+                              <div className="flex items-center gap-1 text-[11px] text-amber-500 font-medium mt-0.5">
+                                <Scissors className="w-2.5 h-2.5" />
+                                <span>ช่าง{bill.barberName}</span>
                               </div>
-                            )}
-                          </td>
+                            </td>
 
-                          <td className={`py-2.5 px-3 font-medium ${isDark ? 'text-zinc-300' : 'text-slate-700'}`}>
-                            {bill.barberName}
-                          </td>
+                            {/* 3. รายการบริการ & ส่วนลด */}
+                            <td className="py-3 px-3.5">
+                              <div className="flex flex-wrap items-center gap-1.5 max-w-sm">
+                                {bill.haircutFee > 0 && (
+                                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[11px] font-medium border ${
+                                    isDark ? 'bg-zinc-800/80 border-zinc-700 text-zinc-200' : 'bg-slate-100 border-slate-200 text-slate-700'
+                                  }`}>
+                                    <span>✂️ ตัดผม</span>
+                                    <strong className="font-mono">{settings.currencySymbol}{bill.haircutFee.toLocaleString()}</strong>
+                                  </span>
+                                )}
 
-                          <td className="py-2.5 px-3 text-right font-mono">
-                            {bill.haircutFee > 0 ? `${settings.currencySymbol}${bill.haircutFee.toLocaleString()}` : '-'}
-                          </td>
+                                {bill.hasHaircutDiscount10 && (
+                                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-lg text-[10px] font-bold bg-emerald-500/15 text-emerald-500 border border-emerald-500/30">
+                                    <Tag className="w-2.5 h-2.5" />
+                                    <span>ลด 10% (-฿{bill.haircutDiscountAmount?.toLocaleString() || '30'})</span>
+                                  </span>
+                                )}
 
-                          <td className="py-2.5 px-3 text-right font-mono">
-                            {bill.chemicalFee > 0 ? `${settings.currencySymbol}${bill.chemicalFee.toLocaleString()}` : '-'}
-                          </td>
+                                {bill.chemicalFee > 0 && (
+                                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[11px] font-medium border ${
+                                    isDark ? 'bg-purple-950/40 border-purple-500/30 text-purple-300' : 'bg-purple-50 border-purple-200 text-purple-800'
+                                  }`}>
+                                    <span>🧪 เคมี</span>
+                                    <strong className="font-mono">{settings.currencySymbol}{bill.chemicalFee.toLocaleString()}</strong>
+                                  </span>
+                                )}
 
-                          <td className="py-2.5 px-3 text-right font-mono">
-                            {bill.totalProductsFee > 0 ? `${settings.currencySymbol}${bill.totalProductsFee.toLocaleString()}` : '-'}
-                          </td>
+                                {bill.totalProductsFee > 0 && (
+                                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[11px] font-medium border ${
+                                    isDark ? 'bg-sky-950/40 border-sky-500/30 text-sky-300' : 'bg-sky-50 border-sky-200 text-sky-800'
+                                  }`}>
+                                    <span>🧴 สินค้า ({bill.products?.length || 1})</span>
+                                    <strong className="font-mono">{settings.currencySymbol}{bill.totalProductsFee.toLocaleString()}</strong>
+                                  </span>
+                                )}
 
-                          <td className="py-2.5 px-3 text-right font-mono text-amber-600">
-                            {bill.tipFee > 0 ? `${settings.currencySymbol}${bill.tipFee.toLocaleString()}` : '-'}
-                          </td>
+                                {(bill.voucherDiscountAmount || 0) > 0 && (
+                                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-lg text-[10px] font-bold bg-amber-500/15 text-amber-500 border border-amber-500/30">
+                                    <Gift className="w-2.5 h-2.5" />
+                                    <span>Voucher -฿{bill.voucherDiscountAmount?.toLocaleString()}</span>
+                                  </span>
+                                )}
 
-                          <td className="py-2.5 px-3 text-right font-mono font-bold text-amber-600">
-                            {settings.currencySymbol}{bill.grossTotal.toLocaleString()}
-                          </td>
+                                {bill.tipFee > 0 && (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[11px] font-medium bg-amber-500/15 text-amber-500 border border-amber-500/30">
+                                    <span>⭐ ทิป ฿{bill.tipFee.toLocaleString()}</span>
+                                  </span>
+                                )}
+                              </div>
+                            </td>
 
-                          <td className="py-2.5 px-3 text-center">
-                            <div className="inline-flex items-center gap-1 p-0.5 rounded-lg border border-zinc-700/60 bg-zinc-950/60">
-                              <button
-                                type="button"
-                                onClick={() => handleQuickPaymentSwitch(bill, 'transfer')}
-                                title="สลับเป็นเงินโอน (📱)"
-                                className={`px-1.5 py-0.5 rounded text-[10px] font-bold transition-all ${
-                                  bill.paymentMethod === 'transfer'
-                                    ? 'bg-sky-500 text-white shadow-xs'
-                                    : 'text-zinc-400 hover:text-sky-400'
-                                }`}
-                              >
-                                📱 โอน
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleQuickPaymentSwitch(bill, 'cash')}
-                                title="สลับเป็นเงินสด (💵)"
-                                className={`px-1.5 py-0.5 rounded text-[10px] font-bold transition-all ${
-                                  bill.paymentMethod === 'cash'
-                                    ? 'bg-emerald-500 text-white shadow-xs'
-                                    : 'text-zinc-400 hover:text-emerald-400'
-                                }`}
-                              >
-                                💵 สด
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleQuickPaymentSwitch(bill, 'split')}
-                                title="สลับเป็นสด+โอน (🔀)"
-                                className={`px-1.5 py-0.5 rounded text-[10px] font-bold transition-all ${
-                                  bill.paymentMethod === 'split'
-                                    ? 'bg-purple-500 text-white shadow-xs'
-                                    : 'text-zinc-400 hover:text-purple-400'
-                                }`}
-                              >
-                                🔀 ผสม
-                              </button>
-                            </div>
-                          </td>
+                            {/* 4. ยอดที่ลูกค้าจ่าย */}
+                            <td className="py-3 px-3.5 text-right whitespace-nowrap">
+                              {hasDiscount && (
+                                <div className="text-[10px] line-through text-zinc-500 font-mono">
+                                  {settings.currencySymbol}{subtotalBefore.toLocaleString()}
+                                </div>
+                              )}
+                              <div className="text-sm font-black font-mono text-amber-500">
+                                {settings.currencySymbol}{bill.grossTotal.toLocaleString()}
+                              </div>
+                            </td>
 
-                          <td className="py-2.5 px-3 text-right font-mono text-rose-500 font-semibold">
-                            {settings.currencySymbol}{bill.commission.barberTotalEarned.toLocaleString()}
-                          </td>
+                            {/* 5. ช่องทางชำระ (สลับด่วน) */}
+                            <td className="py-3 px-3.5 text-center whitespace-nowrap">
+                              <div className="inline-flex items-center gap-1 p-0.5 rounded-lg border border-zinc-700/60 bg-zinc-950/60">
+                                <button
+                                  type="button"
+                                  onClick={() => handleQuickPaymentSwitch(bill, 'transfer')}
+                                  title="สลับเป็นเงินโอน (📱)"
+                                  className={`px-2 py-0.5 rounded text-[10px] font-bold transition-all ${
+                                    bill.paymentMethod === 'transfer'
+                                      ? 'bg-sky-500 text-white shadow-xs'
+                                      : 'text-zinc-400 hover:text-sky-400'
+                                  }`}
+                                >
+                                  📱 โอน
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleQuickPaymentSwitch(bill, 'cash')}
+                                  title="สลับเป็นเงินสด (💵)"
+                                  className={`px-2 py-0.5 rounded text-[10px] font-bold transition-all ${
+                                    bill.paymentMethod === 'cash'
+                                      ? 'bg-emerald-500 text-white shadow-xs'
+                                      : 'text-zinc-400 hover:text-emerald-400'
+                                  }`}
+                                >
+                                  💵 สด
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleQuickPaymentSwitch(bill, 'split')}
+                                  title="สลับเป็นสด+โอน (🔀)"
+                                  className={`px-2 py-0.5 rounded text-[10px] font-bold transition-all ${
+                                    bill.paymentMethod === 'split'
+                                      ? 'bg-purple-500 text-white shadow-xs'
+                                      : 'text-zinc-400 hover:text-purple-400'
+                                  }`}
+                                >
+                                  🔀 ผสม
+                                </button>
+                              </div>
+                            </td>
 
-                          <td className="py-2.5 px-3 text-right font-mono text-purple-600 font-semibold">
-                            {settings.currencySymbol}{bill.commission.shopNetEarned.toLocaleString()}
-                          </td>
+                            {/* 6. การแบ่งเงิน */}
+                            <td className="py-3 px-3.5 text-right whitespace-nowrap font-mono text-xs space-y-0.5">
+                              <div className="text-rose-500 font-semibold flex items-center justify-end gap-1">
+                                <span className="text-[10px] font-sans text-zinc-400">ช่าง:</span>
+                                <span>{settings.currencySymbol}{bill.commission.barberTotalEarned.toLocaleString()}</span>
+                              </div>
+                              <div className="text-purple-600 dark:text-purple-400 font-semibold flex items-center justify-end gap-1">
+                                <span className="text-[10px] font-sans text-zinc-400">ร้าน:</span>
+                                <span>{settings.currencySymbol}{bill.commission.shopNetEarned.toLocaleString()}</span>
+                              </div>
+                            </td>
 
-                          <td className="py-2.5 px-3 text-center">
-                            <div className="flex items-center justify-center gap-1">
-                              <button
-                                onClick={() => openReceiptModal(bill)}
-                                title="ดูสลิป"
-                                className={`p-1.5 rounded-lg transition-colors btn-tactile ${
-                                  isDark ? 'bg-zinc-800 hover:bg-zinc-700 text-zinc-300' : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
-                                }`}
-                              >
-                                <Eye className="w-3.5 h-3.5" />
-                              </button>
-                              <button
-                                onClick={() => openEditBillModal(bill)}
-                                title="แก้ไข"
-                                className={`p-1.5 rounded-lg transition-colors btn-tactile ${
-                                  isDark ? 'bg-zinc-800 hover:bg-amber-500/20 text-zinc-300 hover:text-amber-400' : 'bg-slate-100 hover:bg-amber-100 text-slate-700'
-                                }`}
-                              >
-                                <Edit className="w-3.5 h-3.5" />
-                              </button>
-                              <button
-                                onClick={() => handleDeleteClick(bill)}
-                                title="ลบ"
-                                className={`p-1.5 rounded-lg transition-colors btn-tactile ${
-                                  isDark ? 'bg-zinc-800 hover:bg-rose-500/20 text-zinc-300 hover:text-rose-400' : 'bg-slate-100 hover:bg-rose-100 text-slate-700'
-                                }`}
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))
+                            {/* 7. จัดการ */}
+                            <td className="py-3 px-3.5 text-center whitespace-nowrap">
+                              <div className="flex items-center justify-center gap-1">
+                                <button
+                                  onClick={() => openReceiptModal(bill)}
+                                  title="ดูสลิปใบเสร็จ"
+                                  className={`p-1.5 rounded-lg transition-colors btn-tactile ${
+                                    isDark ? 'bg-zinc-800 hover:bg-zinc-700 text-zinc-300' : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                                  }`}
+                                >
+                                  <Eye className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  onClick={() => openEditBillModal(bill)}
+                                  title="แก้ไขบิล"
+                                  className={`p-1.5 rounded-lg transition-colors btn-tactile ${
+                                    isDark ? 'bg-zinc-800 hover:bg-amber-500/20 text-zinc-300 hover:text-amber-400' : 'bg-slate-100 hover:bg-amber-100 text-slate-700'
+                                  }`}
+                                >
+                                  <Edit className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteClick(bill)}
+                                  title="ลบบิล"
+                                  className={`p-1.5 rounded-lg transition-colors btn-tactile ${
+                                    isDark ? 'bg-zinc-800 hover:bg-rose-500/20 text-zinc-300 hover:text-rose-400' : 'bg-slate-100 hover:bg-rose-100 text-slate-700'
+                                  }`}
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })
                     )}
                   </tbody>
                 </table>

@@ -18,8 +18,6 @@ import {
   Scissors,
   X,
   AlertTriangle,
-  ShieldCheck,
-  Crown,
   Clock,
   Mail,
   LogOut,
@@ -32,10 +30,10 @@ import {
   Eye,
   EyeOff,
   ArrowLeft,
+  Gift,
 } from 'lucide-react';
 import { sounds } from '../utils/sound';
 import { getBillingCycleInfo } from '../utils/billingCycle';
-import { AdminUserManagementSection } from './AdminUserManagementSection';
 
 export const TabSettings: React.FC = () => {
   const {
@@ -55,17 +53,12 @@ export const TabSettings: React.FC = () => {
     resetAllDataToSample,
     factoryReset,
     currentUserEmail,
-    currentUserAccount,
     logout,
-    isCurrentUserAdmin,
-    allUserAccounts,
-    openAdminPanel,
     setActiveTab,
     showToast,
   } = useApp();
 
   const isDark = theme.isDark ?? true;
-  const pendingApprovalsCount = allUserAccounts.filter((u) => u.status === 'pending').length;
 
   // PIN Lock State
   const [isUnlocked, setIsUnlocked] = useState(false);
@@ -100,6 +93,45 @@ export const TabSettings: React.FC = () => {
   const [billingCycleCutoffDay, setBillingCycleCutoffDay] = useState<number>(
     settings.billingCycleCutoffDay ?? 0
   );
+
+  // Voucher Presets State
+  const [voucherPresetAmounts, setVoucherPresetAmounts] = useState<number[]>(
+    settings.voucherPresetAmounts && settings.voucherPresetAmounts.length > 0
+      ? settings.voucherPresetAmounts
+      : [50, 100, 200, 300, 500]
+  );
+  const [newVoucherInput, setNewVoucherInput] = useState<string>('');
+
+  const handleAddVoucherAmount = (amountToAdd?: number) => {
+    const val = amountToAdd ?? (Number(newVoucherInput) || 0);
+    if (val <= 0) return;
+    if (voucherPresetAmounts.includes(val)) {
+      showToast('มีมูลค่านี้อยู่แล้ว', `มูลค่า ${settings.currencySymbol}${val} มีในรายการแล้ว`, 'warning');
+      return;
+    }
+    const updated = [...voucherPresetAmounts, val].sort((a, b) => a - b);
+    setVoucherPresetAmounts(updated);
+    updateSettings({ voucherPresetAmounts: updated });
+    setNewVoucherInput('');
+    sounds.playSuccess();
+    showToast('เพิ่ม Gift Voucher สำเร็จ 🎁', `เพิ่มตัวเลือกส่วนลด ${settings.currencySymbol}${val.toLocaleString()}`, 'success');
+  };
+
+  const handleRemoveVoucherAmount = (amountToRemove: number) => {
+    const updated = voucherPresetAmounts.filter((amt) => amt !== amountToRemove);
+    setVoucherPresetAmounts(updated);
+    updateSettings({ voucherPresetAmounts: updated });
+    sounds.playClick();
+    showToast('ลบมูลค่า Voucher แล้ว', `ลบตัวเลือก ${settings.currencySymbol}${amountToRemove.toLocaleString()}`, 'info');
+  };
+
+  const handleResetVouchersToDefault = () => {
+    const defaults = [50, 100, 200, 300, 500];
+    setVoucherPresetAmounts(defaults);
+    updateSettings({ voucherPresetAmounts: defaults });
+    sounds.playSuccess();
+    showToast('คืนค่าเริ่มต้น Voucher', 'ตั้งเป็น 50, 100, 200, 300, 500 เรียบร้อย', 'info');
+  };
 
   // Barber Modal State (Add or Edit)
   const [barberModalOpen, setBarberModalOpen] = useState(false);
@@ -517,7 +549,7 @@ export const TabSettings: React.FC = () => {
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-8">
-      {/* Current User Account & Subscription Info (ย้ายมาจากแถบด้านบน) */}
+      {/* Current User Account */}
       {currentUserEmail && (
         <div
           className={`p-5 sm:p-6 rounded-2xl border transition-all ${
@@ -530,51 +562,25 @@ export const TabSettings: React.FC = () => {
             <div className="flex items-center gap-3.5 min-w-0">
               <div
                 className={`w-12 h-12 rounded-2xl border flex items-center justify-center shadow-inner shrink-0 ${
-                  isCurrentUserAdmin
+                  isDark
                     ? 'bg-amber-500/20 border-amber-500/30 text-amber-500'
-                    : 'bg-sky-500/20 border-sky-500/30 text-sky-500'
+                    : 'bg-amber-50 border-amber-200 text-amber-600'
                 }`}
               >
-                {isCurrentUserAdmin ? <Crown className="w-6 h-6" /> : <Mail className="w-6 h-6" />}
+                <Store className="w-6 h-6" />
               </div>
               <div className="min-w-0">
                 <div className="flex items-center flex-wrap gap-2">
                   <span className={`text-sm sm:text-base font-mono font-bold truncate ${headingText}`}>
                     {currentUserEmail}
                   </span>
-                  {isCurrentUserAdmin ? (
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-500 text-zinc-950">
-                      👑 Super Admin
-                    </span>
-                  ) : (
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-500 border border-emerald-500/30">
-                      ✅ สมาชิกที่ได้รับอนุมัติ
-                    </span>
-                  )}
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-500 border border-emerald-500/30">
+                    💈 บัญชีร้านค้าออนไลน์
+                  </span>
                 </div>
-
-                <div className={`flex items-center flex-wrap gap-x-4 gap-y-1 text-xs ${mutedText} mt-1`}>
-                  {currentUserAccount?.startDate && (
-                    <span className="flex items-center gap-1">
-                      <Calendar className="w-3.5 h-3.5 text-emerald-500" />
-                      เริ่ม: {currentUserAccount.startDate}
-                    </span>
-                  )}
-                  {currentUserAccount?.expireDate && (
-                    <span className="flex items-center gap-1 font-semibold text-amber-500">
-                      <Clock className="w-3.5 h-3.5" />
-                      หมดอายุ: {currentUserAccount.expireDate}
-                    </span>
-                  )}
-                  {currentUserAccount?.activeDays !== undefined && (
-                    <span className="flex items-center gap-1 font-mono">
-                      (คงเหลือ {currentUserAccount.activeDays} วัน)
-                    </span>
-                  )}
-                  {!currentUserAccount?.expireDate && !isCurrentUserAdmin && (
-                    <span className="text-zinc-400">แพ็กเกจ: ไม่จำกัดระยะเวลา (ตลอดชีพ)</span>
-                  )}
-                </div>
+                <p className={`text-xs ${mutedText} mt-0.5`}>
+                  ร้าน: {settings.shopName} • เชื่อมต่อคลาวด์อัตโนมัติ
+                </p>
               </div>
             </div>
 
@@ -622,9 +628,6 @@ export const TabSettings: React.FC = () => {
           </div>
         </div>
       )}
-
-      {/* SaaS Admin Management Section (For Super Admin Kunakorn.k66@gmail.com) */}
-      {isCurrentUserAdmin && <AdminUserManagementSection />}
 
       {/* 1. SHOP IDENTITY & LOGO */}
       <form onSubmit={handleSaveShopSettings} className="space-y-6">
@@ -979,13 +982,142 @@ export const TabSettings: React.FC = () => {
         </div>
       </form>
 
-      {/* 4. BARBER MANAGEMENT */}
+      {/* 4. GIFT VOUCHER PRESETS (ตั้งค่าส่วนลดบัตรของขวัญ) */}
+      <div className={`${theme.bgCard} rounded-2xl p-5 sm:p-6 space-y-5 transition-all`}>
+        <div className={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b ${borderSubtle}`}>
+          <div className="flex items-center gap-2">
+            <Gift className="w-5 h-5 text-indigo-500" />
+            <div>
+              <h3 className={`text-base font-bold ${headingText}`}>
+                4. ตั้งค่าส่วนลด Gift Voucher (บัตรของขวัญ / คูปองเงินสด)
+              </h3>
+              <p className={`text-xs ${mutedText} mt-0.5`}>
+                กำหนดมูลค่า Voucher ที่เปิดให้กดเลือกในหน้าบันทึกยอดขาย (POS) ทางร้านรับผิดชอบเอง ช่างได้รับส่วนแบ่งเต็ม
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={handleResetVouchersToDefault}
+            className={`self-start sm:self-auto px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all btn-tactile ${
+              isDark
+                ? 'bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border-zinc-700'
+                : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200'
+            }`}
+          >
+            คืนค่าเริ่มต้น
+          </button>
+        </div>
+
+        {/* Active Voucher Chips */}
+        <div className="space-y-2.5">
+          <label className={`block text-xs font-semibold ${mutedText}`}>
+            มูลค่า Gift Voucher ที่เปิดใช้งานในระบบขณะนี้:
+          </label>
+          {voucherPresetAmounts.length === 0 ? (
+            <div className={`p-4 rounded-xl text-center text-xs ${isDark ? 'bg-zinc-950/60 text-zinc-400' : 'bg-slate-50 text-slate-500'}`}>
+              ยังไม่มีการเปิดใช้มูลค่า Gift Voucher (สามารถระบุเพิ่มด้านล่าง)
+            </div>
+          ) : (
+            <div className="flex flex-wrap gap-2.5">
+              {voucherPresetAmounts.map((amt) => (
+                <div
+                  key={amt}
+                  className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl border font-bold text-sm shadow-xs transition-all ${
+                    isDark
+                      ? 'bg-indigo-950/40 border-indigo-500/40 text-indigo-300'
+                      : 'bg-indigo-50 border-indigo-200 text-indigo-800'
+                  }`}
+                >
+                  <Gift className="w-4 h-4 text-indigo-500" />
+                  <span className="font-mono">{settings.currencySymbol}{amt.toLocaleString()}</span>
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveVoucherAmount(amt)}
+                    className="p-1 hover:bg-rose-500/20 hover:text-rose-400 rounded-lg transition-colors ml-1"
+                    title={`ลบตัวเลือก ฿${amt}`}
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Add New Voucher Amount */}
+        <div className={`p-4 rounded-xl border space-y-3 ${isDark ? 'bg-zinc-950/80 border-zinc-800' : 'bg-slate-50 border-slate-200'}`}>
+          <label className={`block text-xs font-semibold ${isDark ? 'text-zinc-300' : 'text-slate-700'}`}>
+            ➕ เพิ่มมูลค่า Gift Voucher ใหม่
+          </label>
+          <div className="flex flex-col sm:flex-row gap-2">
+            <div className="relative flex-1">
+              <span className={`absolute left-3 top-1/2 -translate-y-1/2 font-bold ${mutedText}`}>
+                {settings.currencySymbol}
+              </span>
+              <input
+                type="number"
+                min="1"
+                step="10"
+                value={newVoucherInput}
+                onChange={(e) => setNewVoucherInput(e.target.value)}
+                placeholder="ระบุมูลค่าส่วนลด เช่น 150, 250, 1000"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleAddVoucherAmount();
+                  }
+                }}
+                className={`w-full pl-8 pr-3 py-2 rounded-lg border font-mono font-bold text-sm focus:outline-none ${
+                  isDark ? 'bg-zinc-900 border-zinc-700 text-white' : 'bg-white border-slate-200 text-slate-800'
+                }`}
+              />
+            </div>
+            <button
+              type="button"
+              onClick={() => handleAddVoucherAmount()}
+              disabled={!newVoucherInput || Number(newVoucherInput) <= 0}
+              className="flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-bold text-xs shadow-xs btn-tactile"
+            >
+              <Plus className="w-4 h-4" />
+              <span>เพิ่มตัวเลือกนี้</span>
+            </button>
+          </div>
+
+          {/* Quick presets */}
+          <div className="flex items-center gap-1.5 flex-wrap pt-1">
+            <span className={`text-[11px] ${mutedText} mr-1`}>เลือกเพิ่มด่วน:</span>
+            {[50, 100, 150, 200, 250, 300, 500, 1000].map((presetVal) => {
+              const alreadyExists = voucherPresetAmounts.includes(presetVal);
+              return (
+                <button
+                  key={presetVal}
+                  type="button"
+                  disabled={alreadyExists}
+                  onClick={() => handleAddVoucherAmount(presetVal)}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-mono font-semibold border transition-all ${
+                    alreadyExists
+                      ? 'opacity-40 line-through cursor-not-allowed border-zinc-800 bg-zinc-900 text-zinc-600'
+                      : isDark
+                      ? 'bg-zinc-900 hover:bg-zinc-800 border-zinc-700 text-zinc-300 hover:text-white'
+                      : 'bg-white hover:bg-slate-100 border-slate-200 text-slate-700'
+                  }`}
+                >
+                  +{settings.currencySymbol}{presetVal}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      {/* 5. BARBER MANAGEMENT */}
       <div className={`${theme.bgCard} rounded-2xl p-5 sm:p-6 space-y-4 transition-all`}>
         <div className={`flex items-center justify-between pb-3 border-b ${borderSubtle}`}>
           <div className="flex items-center gap-2">
             <Users className="w-5 h-5 text-amber-600" />
             <h3 className={`text-base font-bold ${headingText}`}>
-              4. รายชื่อช่างตัดผมในร้าน ({barbers.length} คน)
+              5. รายชื่อช่างตัดผมในร้าน ({barbers.length} คน)
             </h3>
           </div>
           <button
@@ -1054,13 +1186,13 @@ export const TabSettings: React.FC = () => {
         </div>
       </div>
 
-      {/* 5. PRODUCT INVENTORY MANAGEMENT */}
+      {/* 6. PRODUCT INVENTORY MANAGEMENT */}
       <div className={`${theme.bgCard} rounded-2xl p-5 sm:p-6 space-y-4 transition-all`}>
         <div className={`flex items-center justify-between pb-3 border-b ${borderSubtle}`}>
           <div className="flex items-center gap-2">
             <ShoppingBag className="w-5 h-5 text-purple-600" />
             <h3 className={`text-base font-bold ${headingText}`}>
-              5. รายการสินค้าและราคา ({products.length} รายการ)
+              6. รายการสินค้าและราคา ({products.length} รายการ)
             </h3>
           </div>
           <button
@@ -1132,7 +1264,7 @@ export const TabSettings: React.FC = () => {
         </div>
       </div>
 
-      {/* 5. THEME CUSTOMIZATION STUDIO (WHITE EDITIONS) */}
+      {/* 7. THEME CUSTOMIZATION STUDIO (WHITE EDITIONS) */}
       <div className={`${theme.bgCard} rounded-2xl p-5 sm:p-6 space-y-5 transition-all`}>
         <div className={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b ${borderSubtle}`}>
           <div className="flex items-center gap-2.5">
@@ -1142,7 +1274,7 @@ export const TabSettings: React.FC = () => {
             <div>
               <div className="flex items-center gap-2">
                 <h3 className={`text-base font-bold ${headingText}`}>
-                  6. สตูดิโอธีมสีสว่าง & สไตล์โปรแกรม (White Edition Themes)
+                  7. สตูดิโอธีมสีสว่าง & สไตล์โปรแกรม (White Edition Themes)
                 </h3>
                 <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-100 text-emerald-800 border border-emerald-200">
                   8 สไตล์โทนขาว
@@ -1260,14 +1392,14 @@ export const TabSettings: React.FC = () => {
         </div>
       </div>
 
-      {/* 7. SETTINGS PIN CODE MANAGEMENT */}
+      {/* 8. SETTINGS PIN CODE MANAGEMENT */}
       <div className={`${theme.bgCard} rounded-2xl p-5 sm:p-6 space-y-4 transition-all`}>
         <div className={`flex items-center justify-between pb-3 border-b ${borderSubtle}`}>
           <div className="flex items-center gap-2">
             <Shield className="w-5 h-5 text-amber-600" />
             <div>
               <h3 className={`text-base font-bold ${headingText}`}>
-                7. ความปลอดภัย & รหัสผ่านหน้าตั้งค่า (Settings PIN Code)
+                8. ความปลอดภัย & รหัสผ่านหน้าตั้งค่า (Settings PIN Code)
               </h3>
               <p className={`text-xs ${mutedText}`}>
                 กำหนดรหัสผ่านสำหรับเข้าหน้าตั้งค่าร้าน เพื่อป้องกันไม่ให้บุคคลภายนอกหรือพนักงานแก้ไขข้อมูลร้านค้า
@@ -1350,7 +1482,7 @@ export const TabSettings: React.FC = () => {
         </form>
       </div>
 
-      {/* 7. SYSTEM RESET & FACTORY RESET */}
+      {/* 9. SYSTEM RESET & FACTORY RESET */}
       <div className="space-y-4">
         {/* Factory Reset (Wipe All Data) */}
         <div className={`p-5 sm:p-6 rounded-2xl border-2 transition-all flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 ${

@@ -28,13 +28,17 @@ export const ModalReceipt: React.FC = () => {
 ลูกค้า: ${bill.customerName}
 -------------------------
 ${bill.haircutFee > 0 ? `ค่าตัดผม: ${settings.currencySymbol}${bill.haircutFee.toLocaleString()}\n` : ''}${
+      bill.hasHaircutDiscount10 && (bill.haircutDiscountAmount || 0) > 0 ? `ส่วนลดตัดผม 10%: -${settings.currencySymbol}${(bill.haircutDiscountAmount || 0).toLocaleString()}\n` : ''
+    }${
       bill.chemicalFee > 0 ? `ค่าเคมี: ${settings.currencySymbol}${bill.chemicalFee.toLocaleString()}\n` : ''
     }${
       bill.products.length > 0
         ? `สินค้า:\n${bill.products.map((p) => ` - ${p.name} x${p.quantity}: ${settings.currencySymbol}${p.total.toLocaleString()}`).join('\n')}\n`
         : ''
+    }${
+      (bill.voucherDiscountAmount || 0) > 0 ? `Gift Voucher${bill.voucherCode ? ` (${bill.voucherCode})` : ''}: -${settings.currencySymbol}${(bill.voucherDiscountAmount || 0).toLocaleString()}\n` : ''
     }${bill.tipFee > 0 ? `ทิป: ${settings.currencySymbol}${bill.tipFee.toLocaleString()}\n` : ''}-------------------------
-ยอดรวมทั้งสิ้น: ${settings.currencySymbol}${bill.grossTotal.toLocaleString()}
+${(bill.totalDiscountAmount || 0) > 0 ? `ยอดรวมก่อนลด: ${settings.currencySymbol}${(bill.subtotalBeforeDiscount || (bill.grossTotal + (bill.totalDiscountAmount || 0))).toLocaleString()}\nส่วนลดรวม: -${settings.currencySymbol}${(bill.totalDiscountAmount || 0).toLocaleString()}\n` : ''}ยอดรวมสุทธิ: ${settings.currencySymbol}${bill.grossTotal.toLocaleString()}
 ชำระโดย: ${
       bill.paymentMethod === 'transfer'
         ? 'เงินโอน 📱'
@@ -180,6 +184,13 @@ ${bill.haircutFee > 0 ? `ค่าตัดผม: ${settings.currencySymbol}${b
                 </div>
               )}
 
+              {bill.hasHaircutDiscount10 && (bill.haircutDiscountAmount || 0) > 0 && (
+                <div className="flex justify-between text-emerald-700 font-semibold">
+                  <span>✂️ ส่วนลดโปรโมชั่นตัดผม 10%</span>
+                  <span>-{settings.currencySymbol}{(bill.haircutDiscountAmount || 0).toLocaleString()}</span>
+                </div>
+              )}
+
               {bill.chemicalFee > 0 && (
                 <div className="flex justify-between">
                   <span>ค่าบริการเคมี / ทรีทเม้นท์</span>
@@ -196,6 +207,13 @@ ${bill.haircutFee > 0 ? `ค่าตัดผม: ${settings.currencySymbol}${b
                 </div>
               ))}
 
+              {(bill.voucherDiscountAmount || 0) > 0 && (
+                <div className="flex justify-between text-indigo-700 font-semibold">
+                  <span>🎁 Gift Voucher {bill.voucherCode ? `(${bill.voucherCode})` : ''}</span>
+                  <span>-{settings.currencySymbol}{(bill.voucherDiscountAmount || 0).toLocaleString()}</span>
+                </div>
+              )}
+
               {bill.tipFee > 0 && (
                 <div className="flex justify-between text-amber-700">
                   <span>ทิปพิเศษช่าง ⭐</span>
@@ -206,8 +224,21 @@ ${bill.haircutFee > 0 ? `ค่าตัดผม: ${settings.currencySymbol}${b
 
             {/* Total Section */}
             <div className="py-3 border-b border-dashed border-slate-300 space-y-1.5 text-xs">
+              {(bill.totalDiscountAmount || 0) > 0 && (
+                <>
+                  <div className="flex justify-between text-slate-500">
+                    <span>ยอดรวมก่อนลด:</span>
+                    <span>{settings.currencySymbol}{(bill.subtotalBeforeDiscount || (bill.grossTotal + (bill.totalDiscountAmount || 0))).toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between text-emerald-700 font-semibold">
+                    <span>ส่วนลดรวม (ทางร้านรับผิดชอบ):</span>
+                    <span>-{settings.currencySymbol}{(bill.totalDiscountAmount || 0).toLocaleString()}</span>
+                  </div>
+                </>
+              )}
+
               <div className="flex justify-between text-base font-extrabold text-slate-900 pt-1">
-                <span>ยอดรวมทั้งสิ้น</span>
+                <span>ยอดสุทธิที่ชำระ</span>
                 <span className="text-emerald-700">{settings.currencySymbol}{bill.grossTotal.toLocaleString()}</span>
               </div>
 

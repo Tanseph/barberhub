@@ -300,6 +300,8 @@ export const INITIAL_BARBERS: Barber[] = [
     chemicalCommissionRate: 50,
     productCommissionRate: 15,
     tipRate: 100,
+    salaryType: 'guarantee_min',
+    baseSalary: 15000,
     active: true,
     notes: 'ช่างอาวุโส เชี่ยวชาญ Classic Fade & Beard Grooming',
   },
@@ -314,6 +316,8 @@ export const INITIAL_BARBERS: Barber[] = [
     chemicalCommissionRate: 50,
     productCommissionRate: 10,
     tipRate: 100,
+    salaryType: 'guarantee_min',
+    baseSalary: 15000,
     active: true,
     notes: 'สไตล์ Skin Fade, Taper, Modern Street',
   },
@@ -328,6 +332,8 @@ export const INITIAL_BARBERS: Barber[] = [
     chemicalCommissionRate: 60,
     productCommissionRate: 15,
     tipRate: 100,
+    salaryType: 'guarantee_min',
+    baseSalary: 15000,
     active: true,
     notes: 'เชี่ยวชาญการดัดวอลลุ่ม ดัดฟอยล์ และทำสีแฟชั่น',
   },
@@ -342,6 +348,8 @@ export const INITIAL_BARBERS: Barber[] = [
     chemicalCommissionRate: 50,
     productCommissionRate: 10,
     tipRate: 100,
+    salaryType: 'guarantee_min',
+    baseSalary: 15000,
     active: true,
     notes: 'ออกแบบทรงผม Two-Block, Mullet, Comma Hair',
   },
@@ -414,6 +422,7 @@ export const CLEAN_SETTINGS: ShopSettings = {
   themeId: 'professional-polish',
   receiptFooterMsg: 'ขอบพระคุณที่ไว้วางใจใช้บริการ 💈✂️',
   settingsPin: '1234',
+  voucherPresetAmounts: [50, 100, 200, 300, 500],
 };
 
 export const INITIAL_SETTINGS: ShopSettings = {
@@ -432,6 +441,7 @@ export const INITIAL_SETTINGS: ShopSettings = {
   themeId: 'professional-polish',
   receiptFooterMsg: 'ขอบพระคุณที่ไว้วางใจใช้บริการ หวังว่าจะได้ดูแลคุณลูกค้าในครั้งถัดไปครับ 💈✂️',
   settingsPin: '1234',
+  voucherPresetAmounts: [50, 100, 200, 300, 500],
 };
 
 // Generate realistic initial bills for 2026-08-18 and past couple days

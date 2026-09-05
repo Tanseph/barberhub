@@ -1,6 +1,6 @@
 export type PaymentMethod = 'transfer' | 'cash' | 'split';
 
-export type TabType = 'pos' | 'dashboard' | 'queue' | 'expenses' | 'settings';
+export type TabType = 'pos' | 'dashboard' | 'queue' | 'expenses' | 'payslip' | 'settings';
 
 export type QueueStatus = 'waiting' | 'in_progress' | 'completed' | 'cancelled';
 
@@ -54,6 +54,8 @@ export interface ShopExpense {
   referenceNo?: string;
 }
 
+export type BarberSalaryType = 'guarantee_min' | 'commission_only' | 'fixed_plus_commission';
+
 export interface Barber {
   id: string;
   name: string;
@@ -66,6 +68,8 @@ export interface Barber {
   productCommissionRate: number; // e.g. 10 (%)
   tipRate: number; // e.g. 100 (%)
   active: boolean;
+  salaryType?: BarberSalaryType; // รูปแบบเงินเดือน: การันตีขั้นต่ำ (ทำไม่ถึงได้ฐาน/ทำเกินได้ตามจริง) | คอมมิชชั่นล้วน | เงินเดือนประจำ+คอมมิชชั่น
+  baseSalary?: number; // ฐานเงินเดือนการันตี เช่น 15,000 บาท
   notes?: string;
 }
 
@@ -146,7 +150,14 @@ export interface SaleBill {
   tipFee: number;
   products: BillProductItem[];
   totalProductsFee: number;
-  grossTotal: number;
+  // Promotion & Voucher Discounts (Shop absorbs discount, barber receives full commission)
+  hasHaircutDiscount10?: boolean; // โปรโมชั่น ลด 10% ค่าตัดผม
+  haircutDiscountAmount?: number; // ยอดลดค่าตัดผม 10%
+  voucherCode?: string; // รหัส หรือชื่อ Gift Voucher
+  voucherDiscountAmount?: number; // ยอดลด Gift Voucher
+  totalDiscountAmount?: number; // รวมส่วนลดทั้งหมดที่ร้านออกให้
+  subtotalBeforeDiscount?: number; // ยอดรวมก่อนหักส่วนลด
+  grossTotal: number; // ยอดสุทธิที่ลูกค้าต้องชำระ
   paymentMethod: PaymentMethod;
   cashAmount: number;
   transferAmount: number;
@@ -240,4 +251,5 @@ export interface ShopSettings {
   themeId: ThemeKey;
   receiptFooterMsg: string;
   settingsPin?: string; // Default '1234'
+  voucherPresetAmounts?: number[]; // มูลค่า Gift Voucher ที่กำหนดไว้ในร้าน เช่น [50, 100, 200, 300, 500]
 }

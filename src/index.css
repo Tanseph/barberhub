@@ -103,14 +103,31 @@ button:disabled, [role="button"]:disabled {
   animation: scaleUp 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
-/* Print utilities for receipt paper */
+/* Print utilities for receipt paper & payslip document */
 @media print {
+  @page {
+    size: A4 portrait;
+    margin: 10mm;
+  }
+
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+  }
+
   body * {
     visibility: hidden;
   }
-  #printable-receipt, #printable-receipt * {
+
+  .no-print, header, nav, footer {
+    display: none !important;
+  }
+
+  #printable-receipt, #printable-receipt *,
+  #printable-payslip, #printable-payslip * {
     visibility: visible;
   }
+
   #printable-receipt {
     position: absolute;
     left: 0;
@@ -118,5 +135,19 @@ button:disabled, [role="button"]:disabled {
     width: 100%;
     margin: 0;
     padding: 10px;
+  }
+
+  #printable-payslip {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 20px !important;
+    border: none !important;
+    box-shadow: none !important;
+    background: #ffffff !important;
+    color: #0f172a !important;
   }
 }
