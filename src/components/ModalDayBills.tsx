@@ -95,7 +95,10 @@ export const ModalDayBills: React.FC<ModalDayBillsProps> = ({
     );
   });
 
-  const totalGross = dayBills.reduce((s, b) => s + b.grossTotal, 0);
+  const totalTips = dayBills.reduce((s, b) => s + b.tipFee, 0);
+  const totalShopSales = dayBills.reduce((s, b) => s + Math.max(0, (b.haircutFee + b.chemicalFee + b.totalProductsFee) - (b.totalDiscountAmount || 0)), 0);
+  const totalCustomerPaid = dayBills.reduce((s, b) => s + b.grossTotal, 0);
+  const totalGross = totalShopSales;
   const totalTransfer = dayBills.reduce((s, b) => s + b.transferAmount, 0);
   const totalCash = dayBills.reduce((s, b) => s + b.cashAmount, 0);
   const totalBarberPayout = dayBills.reduce((s, b) => s + b.commission.barberTotalEarned, 0);
@@ -211,11 +214,13 @@ export const ModalDayBills: React.FC<ModalDayBillsProps> = ({
         {/* Day Summary Cards */}
         <div className="p-6 border-b border-zinc-800/40 grid grid-cols-2 sm:grid-cols-4 gap-3 bg-zinc-950/40">
           <div className={`p-3 rounded-xl border ${isDark ? 'bg-zinc-950/80 border-zinc-800' : 'bg-slate-50 border-slate-200'}`}>
-            <span className="text-[11px] text-zinc-400 block font-medium">รายรับรวม (Gross)</span>
+            <span className="text-[11px] text-zinc-400 block font-medium">รายได้ร้าน (ไม่รวมทิป)</span>
             <span className="text-base sm:text-lg font-black font-mono text-amber-500">
-              {settings.currencySymbol}{totalGross.toLocaleString()}
+              {settings.currencySymbol}{totalShopSales.toLocaleString()}
             </span>
-            <span className="text-[10px] text-zinc-500 block">ทั้งหมด {dayBills.length} บิล</span>
+            <span className="text-[10px] text-zinc-500 block">
+              {totalTips > 0 ? `(ทิปช่าง ฿${totalTips.toLocaleString()} • ${dayBills.length} บิล)` : `ทั้งหมด ${dayBills.length} บิล`}
+            </span>
           </div>
           <div className={`p-3 rounded-xl border ${isDark ? 'bg-zinc-950/80 border-zinc-800' : 'bg-slate-50 border-slate-200'}`}>
             <span className="text-[11px] text-zinc-400 block font-medium">ยอดเงินโอน / สด</span>

@@ -919,15 +919,19 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const barberHaircutEarned = (haircutFee * haircutRate) / 100;
     const barberChemicalEarned = (chemicalFee * chemicalRate) / 100;
     const barberProductEarned = (totalProductFee * productRate) / 100;
-    const barberTipEarned = (tipFee * tipRate) / 100;
+    // ยอดทิปส่งมอบให้ช่าง 100% ไม่นับรวมเป็นรายได้ร้าน
+    const barberTipEarned = tipFee;
 
-    const barberTotalEarned =
-      barberHaircutEarned + barberChemicalEarned + barberProductEarned + barberTipEarned;
-    const subtotal = haircutFee + chemicalFee + totalProductFee + tipFee;
+    const barberServicesCommission = barberHaircutEarned + barberChemicalEarned + barberProductEarned;
+    const barberTotalEarned = barberServicesCommission + barberTipEarned;
+
+    // รายได้ร้านมาจากค่าบริการและสินค้าเท่านั้น (ไม่รวมยอดทิป)
+    const shopServicesTotal = haircutFee + chemicalFee + totalProductFee;
     const discount = totalDiscountAmount || 0;
-    const grossTotal = Math.max(0, subtotal - discount);
+    const shopGrossAfterDiscount = Math.max(0, shopServicesTotal - discount);
+
     // ทางร้านรับผิดชอบส่วนลดเอง (หักออกจากส่วนของร้าน)
-    const shopNetEarned = grossTotal - barberTotalEarned;
+    const shopNetEarned = shopGrossAfterDiscount - barberServicesCommission;
 
     return {
       barberHaircutEarned,

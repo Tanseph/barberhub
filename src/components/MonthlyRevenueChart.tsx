@@ -111,7 +111,8 @@ export const MonthlyRevenueChart: React.FC<MonthlyRevenueChartProps> = ({
 
       for (let i = 0; i < dayBills.length; i++) {
         const b = dayBills[i];
-        gross += b.grossTotal;
+        // ยอดขายร้านไม่รวมทิป
+        gross += Math.max(0, (b.haircutFee + b.chemicalFee + b.totalProductsFee) - (b.totalDiscountAmount || 0));
         barberPayroll += b.commission.barberTotalEarned;
         shopCommission += b.commission.shopNetEarned;
         transfer += b.transferAmount;
@@ -170,7 +171,8 @@ export const MonthlyRevenueChart: React.FC<MonthlyRevenueChartProps> = ({
 
       for (let j = 0; j < monthBills.length; j++) {
         const b = monthBills[j];
-        gross += b.grossTotal;
+        // ยอดขายร้านไม่รวมทิป
+        gross += Math.max(0, (b.haircutFee + b.chemicalFee + b.totalProductsFee) - (b.totalDiscountAmount || 0));
         barberPayroll += b.commission.barberTotalEarned;
         shopCommission += b.commission.shopNetEarned;
         transfer += b.transferAmount;
@@ -201,29 +203,26 @@ export const MonthlyRevenueChart: React.FC<MonthlyRevenueChartProps> = ({
     return months;
   }, [bills, expenses, selectedMonth, cutoffDay]);
 
-  // 3. Data for Service Breakdown in selected month
+  // 3. Data for Service Breakdown in selected month (ยอดขายบริการและสินค้าของร้าน ไม่รวมทิป)
   const servicePieData = useMemo(() => {
     let haircut = 0;
     let chemical = 0;
     let product = 0;
-    let tip = 0;
 
     for (let i = 0; i < currentMonthBills.length; i++) {
       const b = currentMonthBills[i];
       haircut += b.haircutFee;
       chemical += b.chemicalFee;
       product += b.totalProductsFee;
-      tip += b.tipFee;
     }
 
-    const total = haircut + chemical + product + tip;
+    const total = haircut + chemical + product;
     if (total === 0) return [];
 
     return [
       { name: 'บริการตัดผม', value: haircut, color: '#f59e0b', percent: ((haircut / total) * 100).toFixed(1) },
       { name: 'บริการเคมี/ดัด/ทำสี', value: chemical, color: '#8b5cf6', percent: ((chemical / total) * 100).toFixed(1) },
       { name: 'ขายสินค้า/โพเมด', value: product, color: '#06b6d4', percent: ((product / total) * 100).toFixed(1) },
-      { name: 'ทิปช่าง', value: tip, color: '#10b981', percent: ((tip / total) * 100).toFixed(1) },
     ].filter((item) => item.value > 0);
   }, [currentMonthBills]);
 
@@ -240,7 +239,8 @@ export const MonthlyRevenueChart: React.FC<MonthlyRevenueChartProps> = ({
         const b = currentMonthBills[i];
         if (b.barberId === barber.id) {
           bBillsCount++;
-          gross += b.grossTotal;
+          // ยอดบริการและสินค้าที่ช่างทำได้ (ไม่รวมทิป)
+          gross += Math.max(0, (b.haircutFee + b.chemicalFee + b.totalProductsFee) - (b.totalDiscountAmount || 0));
           earned += b.commission.barberTotalEarned;
           shopEarned += b.commission.shopNetEarned;
           if (b.haircutFee > 0) heads++;

@@ -42,7 +42,12 @@ export async function exportReportToPDF({
   const totalChemRev = periodBills.reduce((s, b) => s + b.chemicalFee, 0);
   const totalProdRev = periodBills.reduce((s, b) => s + b.totalProductsFee, 0);
   const totalTipRev = periodBills.reduce((s, b) => s + b.tipFee, 0);
-  const totalGross = periodBills.reduce((s, b) => s + b.grossTotal, 0);
+  const totalDiscounts = periodBills.reduce((s, b) => s + (b.totalDiscountAmount || 0), 0);
+
+  // รายได้ของร้าน (ไม่รวมยอดทิปช่าง)
+  const totalShopSalesGross = totalHaircutRev + totalChemRev + totalProdRev;
+  const totalShopNetRevenue = Math.max(0, totalShopSalesGross - totalDiscounts);
+  const totalGross = totalShopNetRevenue;
 
   const totalHaircutComm = periodBills.reduce((s, b) => s + b.commission.barberHaircutEarned, 0);
   const totalChemComm = periodBills.reduce((s, b) => s + b.commission.barberChemicalEarned, 0);
@@ -131,14 +136,15 @@ export async function exportReportToPDF({
       <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 24px;">
         <!-- 1. Gross Revenue -->
         <div style="border: 1px solid #cbd5e1; border-radius: 8px; padding: 12px; background-color: #f8fafc;">
-          <div style="font-size: 11px; font-weight: bold; color: #64748b; margin-bottom: 8px; text-transform: uppercase;">1. รายได้จากการขาย</div>
+          <div style="font-size: 11px; font-weight: bold; color: #64748b; margin-bottom: 8px; text-transform: uppercase;">1. รายได้ร้าน (ไม่รวมทิป)</div>
           <div style="font-size: 11px; margin-bottom: 4px; display: flex; justify-content: space-between;"><span>• ค่าตัดผม:</span><strong style="font-family: monospace;">฿${totalHaircutRev.toLocaleString()}</strong></div>
           <div style="font-size: 11px; margin-bottom: 4px; display: flex; justify-content: space-between;"><span>• ค่าเคมี:</span><strong style="font-family: monospace;">฿${totalChemRev.toLocaleString()}</strong></div>
           <div style="font-size: 11px; margin-bottom: 4px; display: flex; justify-content: space-between;"><span>• ขายสินค้า:</span><strong style="font-family: monospace;">฿${totalProdRev.toLocaleString()}</strong></div>
-          <div style="font-size: 11px; margin-bottom: 8px; display: flex; justify-content: space-between; color: #d97706;"><span>• เงินทิป:</span><strong style="font-family: monospace;">฿${totalTipRev.toLocaleString()}</strong></div>
+          ${totalDiscounts > 0 ? `<div style="font-size: 11px; margin-bottom: 4px; display: flex; justify-content: space-between; color: #ef4444;"><span>• ส่วนลดร้านออกให้:</span><strong style="font-family: monospace;">-฿${totalDiscounts.toLocaleString()}</strong></div>` : ''}
+          <div style="font-size: 10px; margin-bottom: 6px; display: flex; justify-content: space-between; color: #d97706; padding-top: 4px; border-top: 1px dashed #e2e8f0;"><span>* ทิปช่าง (ส่งมอบช่าง):</span><strong style="font-family: monospace;">฿${totalTipRev.toLocaleString()}</strong></div>
           <div style="border-top: 1px solid #cbd5e1; padding-top: 6px; display: flex; justify-content: space-between; font-weight: bold; font-size: 13px; color: #b45309;">
-            <span>ยอดรวม (Gross):</span>
-            <span style="font-family: monospace;">฿${totalGross.toLocaleString()}</span>
+            <span>รายได้ร้านสุทธิ:</span>
+            <span style="font-family: monospace;">฿${totalShopNetRevenue.toLocaleString()}</span>
           </div>
         </div>
 
@@ -148,7 +154,7 @@ export async function exportReportToPDF({
           <div style="font-size: 11px; margin-bottom: 4px; display: flex; justify-content: space-between;"><span>• ตัดผม:</span><strong style="font-family: monospace;">฿${totalHaircutComm.toLocaleString()}</strong></div>
           <div style="font-size: 11px; margin-bottom: 4px; display: flex; justify-content: space-between;"><span>• เคมี:</span><strong style="font-family: monospace;">฿${totalChemComm.toLocaleString()}</strong></div>
           <div style="font-size: 11px; margin-bottom: 4px; display: flex; justify-content: space-between;"><span>• สินค้า:</span><strong style="font-family: monospace;">฿${totalProdComm.toLocaleString()}</strong></div>
-          <div style="font-size: 11px; margin-bottom: 8px; display: flex; justify-content: space-between; color: #d97706;"><span>• ทิปส่งมอบ:</span><strong style="font-family: monospace;">฿${totalTipPayout.toLocaleString()}</strong></div>
+          <div style="font-size: 11px; margin-bottom: 8px; display: flex; justify-content: space-between; color: #d97706;"><span>• ทิปส่งมอบ (100%):</span><strong style="font-family: monospace;">฿${totalTipPayout.toLocaleString()}</strong></div>
           <div style="border-top: 1px solid #cbd5e1; padding-top: 6px; display: flex; justify-content: space-between; font-weight: bold; font-size: 13px; color: #dc2626;">
             <span>รวมจ่ายช่าง:</span>
             <span style="font-family: monospace;">฿${totalBarberPayout.toLocaleString()}</span>

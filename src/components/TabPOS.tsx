@@ -1131,7 +1131,8 @@ export const TabPOS: React.FC = () => {
                 isDark ? 'text-zinc-300' : 'text-slate-700'
               }`}>
                 <span>
-                  ✂️ <strong>{currentBarber?.nickname || 'ช่าง'}:</strong> ได้รับเต็ม <strong className="text-emerald-500 dark:text-emerald-400 font-mono font-bold">{settings.currencySymbol}{commissionPreview.barberTotalEarned.toLocaleString()}</strong>
+                  ✂️ <strong>{currentBarber?.nickname || 'ช่าง'}:</strong> ได้รับ <strong className="text-emerald-500 dark:text-emerald-400 font-mono font-bold">{settings.currencySymbol}{commissionPreview.barberTotalEarned.toLocaleString()}</strong>
+                  {commissionPreview.barberTipEarned > 0 && <span className="text-[10px] text-amber-500 ml-1">(รวมทิป ฿{commissionPreview.barberTipEarned.toLocaleString()})</span>}
                 </span>
                 <span className={mutedText}>•</span>
                 <span>

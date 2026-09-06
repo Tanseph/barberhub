@@ -40,6 +40,7 @@ import { ModalAccountingReport } from './ModalAccountingReport';
 import { ModalDayBills } from './ModalDayBills';
 import { ModalMergeBills } from './ModalMergeBills';
 import { MonthlyRevenueChart } from './MonthlyRevenueChart';
+import { DailyTrend30DaysChart } from './DailyTrend30DaysChart';
 import {
   getBillingCycleInfo,
   filterBillsByBillingCycle,
@@ -114,8 +115,8 @@ export const TabDashboard: React.FC = () => {
   const [viewMode, setViewMode] = useState<'daily' | 'monthly'>('daily');
 
   // Sub-tab view inside dashboard for easy organization:
-  // 'ledger' (Bills / Daily Table), 'barbers' (Barber Payroll), 'analytics' (Charts), 'accounting' (Statement)
-  const [activeSection, setActiveSection] = useState<'ledger' | 'barbers' | 'analytics' | 'accounting'>('ledger');
+  // 'ledger' (Bills / Daily Table), 'trend30' (30-Day Line Chart), 'barbers' (Barber Payroll), 'analytics' (Charts), 'accounting' (Statement)
+  const [activeSection, setActiveSection] = useState<'ledger' | 'trend30' | 'barbers' | 'analytics' | 'accounting'>('ledger');
 
   // Dates filters
   const today = new Date();
@@ -206,7 +207,14 @@ export const TabDashboard: React.FC = () => {
   const totalChemicalRev = allPeriodBills.reduce((s, b) => s + b.chemicalFee, 0);
   const totalProductsRev = allPeriodBills.reduce((s, b) => s + b.totalProductsFee, 0);
   const totalTipsRev = allPeriodBills.reduce((s, b) => s + b.tipFee, 0);
-  const totalGrossRevenue = allPeriodBills.reduce((s, b) => s + b.grossTotal, 0);
+  const totalDiscounts = allPeriodBills.reduce((s, b) => s + (b.totalDiscountAmount || 0), 0);
+
+  // รายได้ของร้าน (ไม่รวมยอดทิปช่าง เพราะทิปส่งมอบให้ช่าง 100% ไม่ใช่รายได้ของร้าน)
+  const totalShopSalesGross = totalHaircutRev + totalChemicalRev + totalProductsRev;
+  const totalShopRevenue = Math.max(0, totalShopSalesGross - totalDiscounts);
+  // ยอดเงินรับรวมจากลูกค้าทั้งหมด (รวมยอดทิปที่ชำระผ่านเก๊ะ/โอนเพื่อส่งต่อให้ช่าง)
+  const totalCustomerPayments = allPeriodBills.reduce((s, b) => s + b.grossTotal, 0);
+  const totalGrossRevenue = totalShopRevenue; // ให้ยอดขายหลักของร้านใช้ยอดรายได้ร้านที่ไม่รวมทิป
 
   const totalTransfer = allPeriodBills.reduce((s, b) => s + b.transferAmount, 0);
   const totalCash = allPeriodBills.reduce((s, b) => s + b.cashAmount, 0);
@@ -217,7 +225,6 @@ export const TabDashboard: React.FC = () => {
   const periodTransferBills = allPeriodBills.filter((b) => b.paymentMethod === 'transfer' || (b.paymentMethod === 'split' && b.transferAmount > 0)).length;
   const periodCashBills = allPeriodBills.filter((b) => b.paymentMethod === 'cash' || (b.paymentMethod === 'split' && b.cashAmount > 0)).length;
 
-  const totalDiscounts = allPeriodBills.reduce((s, b) => s + (b.totalDiscountAmount || 0), 0);
   const totalHaircutDiscount = allPeriodBills.reduce((s, b) => s + (b.haircutDiscountAmount || 0), 0);
   const totalVoucherDiscount = allPeriodBills.reduce((s, b) => s + (b.voucherDiscountAmount || 0), 0);
   const promoHaircutCount = allPeriodBills.filter((b) => b.hasHaircutDiscount10).length;
@@ -233,12 +240,12 @@ export const TabDashboard: React.FC = () => {
   const totalShopExpenses = allPeriodExpenses.reduce((s, e) => s + e.amount, 0);
   const totalShopNet = allPeriodBills.reduce((s, b) => s + b.commission.shopNetEarned, 0);
   const finalShopNetAfterExpenses = totalShopNet - totalShopExpenses;
-  const shopProfitMargin = totalGrossRevenue > 0 ? ((finalShopNetAfterExpenses / totalGrossRevenue) * 100).toFixed(1) : '0';
-  const avgTicketValue = allPeriodBills.length > 0 ? Math.round(totalGrossRevenue / allPeriodBills.length) : 0;
+  const shopProfitMargin = totalShopRevenue > 0 ? ((finalShopNetAfterExpenses / totalShopRevenue) * 100).toFixed(1) : '0';
+  const avgTicketValue = allPeriodBills.length > 0 ? Math.round(totalShopRevenue / allPeriodBills.length) : 0;
 
-  // Transfer vs Cash percentages
-  const transferPercent = totalGrossRevenue > 0 ? Math.round((totalTransfer / totalGrossRevenue) * 100) : 0;
-  const cashPercent = totalGrossRevenue > 0 ? 100 - transferPercent : 0;
+  // Transfer vs Cash percentages (คำนวณจากยอดเงินที่รับเข้ามาจริง)
+  const transferPercent = totalCustomerPayments > 0 ? Math.round((totalTransfer / totalCustomerPayments) * 100) : 0;
+  const cashPercent = totalCustomerPayments > 0 ? 100 - transferPercent : 0;
 
   // Filtered bills for the daily ledger table (with search, filters, and sequential order applied)
   const filteredDailyBills = useMemo(() => {
@@ -315,6 +322,8 @@ export const TabDashboard: React.FC = () => {
       let transferAmount = 0;
       let cashAmount = 0;
       let grossRevenue = 0;
+      let tipAmount = 0;
+      let customerTotalPaid = 0;
       let barberPayroll = 0;
       let shopCommissionGross = 0;
       let haircutCount = 0;
@@ -325,7 +334,10 @@ export const TabDashboard: React.FC = () => {
         const b = dayBills[j];
         transferAmount += b.transferAmount;
         cashAmount += b.cashAmount;
-        grossRevenue += b.grossTotal;
+        // รายได้ร้านไม่รวมยอดทิป
+        grossRevenue += Math.max(0, (b.haircutFee + b.chemicalFee + b.totalProductsFee) - (b.totalDiscountAmount || 0));
+        tipAmount += b.tipFee;
+        customerTotalPaid += b.grossTotal;
         barberPayroll += b.commission.barberTotalEarned;
         shopCommissionGross += b.commission.shopNetEarned;
         if (b.haircutFee > 0) haircutCount++;
@@ -361,6 +373,8 @@ export const TabDashboard: React.FC = () => {
         transferAmount,
         cashAmount,
         grossRevenue,
+        tipAmount,
+        customerTotalPaid,
         barberPayroll,
         shopExpenseAmount,
         totalExpenses: totalExpensesVal,
@@ -568,7 +582,7 @@ export const TabDashboard: React.FC = () => {
           const hour = parseInt(b.timeStr.split(':')[0]);
           return hour >= parseInt(timeLabel) && hour < nextHour;
         });
-        const total = matching.reduce((sum, b) => sum + b.grossTotal, 0);
+        const total = matching.reduce((sum, b) => sum + Math.max(0, (b.haircutFee + b.chemicalFee + b.totalProductsFee) - (b.totalDiscountAmount || 0)), 0);
         return { label: timeLabel, total, count: matching.length };
       });
     } else {
@@ -786,6 +800,24 @@ export const TabDashboard: React.FC = () => {
             {/* Quick Export / Accounting Report Button */}
             <div className="flex items-center gap-1.5 ml-auto lg:ml-0">
               <button
+                onClick={() => {
+                  sounds.playClick();
+                  setActiveSection('trend30');
+                }}
+                title="ดูแนวโน้มรายได้ของร้านย้อนหลัง 30 วันแบบกราฟเส้น"
+                className={`px-3 py-1.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 transition-all btn-tactile ${
+                  activeSection === 'trend30'
+                    ? 'bg-amber-500 text-zinc-950 border-amber-500 shadow-xs'
+                    : isDark
+                    ? 'bg-zinc-900 border-zinc-700 text-amber-400 hover:bg-zinc-800'
+                    : 'bg-amber-50 border-amber-200 text-amber-900 hover:bg-amber-100'
+                }`}
+              >
+                <TrendingUp className="w-3.5 h-3.5 text-amber-500" />
+                <span>กราฟ 30 วัน</span>
+              </button>
+
+              <button
                 onClick={handleExportCSV}
                 title="ดาวน์โหลดไฟล์ CSV สำหรับ Excel"
                 className={`p-2 sm:px-3 sm:py-1.5 rounded-xl border text-xs font-semibold flex items-center gap-1.5 transition-all btn-tactile ${
@@ -813,22 +845,36 @@ export const TabDashboard: React.FC = () => {
 
       {/* 2. FOUR HIGH-IMPACT HERO KPI CARDS (CLEAN, INTUITIVE & CRISP) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
-        {/* Card 1: ยอดขายรวม (Gross Sales) */}
+        {/* Card 1: ยอดขายร้าน (Shop Sales - ไม่รวมทิป) */}
         <div className={`p-4 sm:p-5 rounded-2xl border transition-all ${
           isDark ? 'bg-zinc-900/90 border-amber-500/30 shadow-xs' : 'bg-white border-slate-200 shadow-xs'
         }`}>
           <div className="flex items-center justify-between mb-1.5">
             <span className={`text-xs font-bold ${mutedText} flex items-center gap-1.5`}>
               <DollarSign className="w-3.5 h-3.5 text-amber-500" />
-              <span>ยอดขายรวมทั้งหมด</span>
+              <span>ยอดขายร้าน (ไม่รวมทิป)</span>
             </span>
             <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-amber-500/15 text-amber-600 dark:text-amber-400">
               {viewMode === 'daily' ? 'รายวัน' : 'รอบบิล'}
             </span>
           </div>
 
-          <div className="text-2xl sm:text-3xl font-black font-mono text-amber-500 tracking-tight">
-            {settings.currencySymbol}{totalGrossRevenue.toLocaleString()}
+          <div className="flex items-center justify-between mt-1">
+            <div className="text-2xl sm:text-3xl font-black font-mono text-amber-500 tracking-tight">
+              {settings.currencySymbol}{totalShopRevenue.toLocaleString()}
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                sounds.playClick();
+                setActiveSection('trend30');
+              }}
+              className="text-[11px] font-semibold text-amber-500 hover:text-amber-400 flex items-center gap-0.5 transition-colors p-1 rounded-lg hover:bg-amber-500/10"
+              title="เปิดกราฟสรุปยอดขายรายวันย้อนหลัง 30 วัน"
+            >
+              <TrendingUp className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">แนวโน้ม 30 วัน</span>
+            </button>
           </div>
 
           <div className={`mt-2.5 pt-2.5 border-t ${borderSubtle} flex items-center justify-between text-[11px] font-mono`}>
@@ -1007,14 +1053,14 @@ export const TabDashboard: React.FC = () => {
             <div className="flex items-center justify-between text-xs mb-1">
               <span className={`font-semibold ${mutedText} flex items-center gap-1`}>
                 <Sparkles className="w-3 h-3 text-amber-400" />
-                <span>ทิปช่าง</span>
+                <span>ทิปช่าง (ส่งต่อช่าง)</span>
               </span>
             </div>
             <div className="text-base sm:text-lg font-black font-mono text-amber-500">
               {settings.currencySymbol}{totalTipsRev.toLocaleString()}
             </div>
-            <div className={`text-[10px] ${mutedText} mt-0.5`}>
-              ส่งมอบช่าง 100%
+            <div className={`text-[10px] text-amber-600/80 dark:text-amber-400/80 mt-0.5`}>
+              ส่งมอบช่าง 100% (ไม่รวมรายได้ร้าน)
             </div>
           </div>
 
@@ -1105,6 +1151,26 @@ export const TabDashboard: React.FC = () => {
         >
           <Receipt className="w-3.5 h-3.5" />
           <span>{viewMode === 'daily' ? `รายการบิล (${filteredDailyBills.length})` : 'ตารางสรุปรายวัน'}</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            sounds.playClick();
+            setActiveSection('trend30');
+          }}
+          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all btn-tactile flex items-center gap-1.5 border shrink-0 ${
+            activeSection === 'trend30'
+              ? isDark
+                ? 'bg-amber-500 text-zinc-950 border-amber-500 shadow-xs'
+                : 'bg-slate-900 text-white border-slate-900 shadow-xs'
+              : isDark
+              ? 'bg-zinc-900 text-zinc-400 border-zinc-800 hover:text-zinc-200'
+              : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+          }`}
+        >
+          <TrendingUp className="w-3.5 h-3.5" />
+          <span>แนวโน้ม 30 วัน (กราฟเส้น)</span>
         </button>
 
         <button
@@ -1617,6 +1683,19 @@ export const TabDashboard: React.FC = () => {
         </>
       )}
 
+      {/* TAB: 30-DAY DAILY REVENUE TREND LINE CHART */}
+      {activeSection === 'trend30' && (
+        <DailyTrend30DaysChart
+          bills={bills}
+          expenses={expenses}
+          barbers={barbers}
+          settings={settings}
+          isDark={isDark}
+          selectedDate={selectedDate}
+          onInspectDay={(dateStr) => setInspectDayDate(dateStr)}
+        />
+      )}
+
       {/* TAB B: BARBER EARNINGS & PAYROLL */}
       {activeSection === 'barbers' && (
         <div className={`${theme.bgCard} rounded-2xl p-4 sm:p-5 border ${borderSubtle} space-y-4`}>
@@ -1691,6 +1770,17 @@ export const TabDashboard: React.FC = () => {
       {/* TAB C: ANALYTICS & CHARTS */}
       {activeSection === 'analytics' && (
         <div className="space-y-5">
+          {/* 30-Day Daily Sales Trend Line Chart */}
+          <DailyTrend30DaysChart
+            bills={bills}
+            expenses={expenses}
+            barbers={barbers}
+            settings={settings}
+            isDark={isDark}
+            selectedDate={selectedDate}
+            onInspectDay={(dateStr) => setInspectDayDate(dateStr)}
+          />
+
           <MonthlyRevenueChart
             bills={bills}
             expenses={expenses}
@@ -1763,7 +1853,7 @@ export const TabDashboard: React.FC = () => {
             <div className={`p-4 rounded-xl border ${isDark ? 'bg-zinc-950/70 border-zinc-800' : 'bg-slate-50 border-slate-200'}`}>
               <h4 className="text-xs font-bold text-amber-600 mb-2 flex items-center gap-1.5">
                 <DollarSign className="w-3.5 h-3.5" />
-                <span>1. รายได้จากการดำเนินงาน</span>
+                <span>1. รายได้จากการดำเนินงานของร้าน (ไม่รวมทิป)</span>
               </h4>
               <div className="space-y-1.5 text-xs">
                 <div className="flex justify-between">
@@ -1778,13 +1868,19 @@ export const TabDashboard: React.FC = () => {
                   <span className={mutedText}>ขายสินค้า:</span>
                   <span className="font-mono font-semibold">{settings.currencySymbol}{totalProductsRev.toLocaleString()}</span>
                 </div>
-                <div className="flex justify-between text-amber-600">
-                  <span>เงินทิป:</span>
-                  <span className="font-mono font-semibold">{settings.currencySymbol}{totalTipsRev.toLocaleString()}</span>
-                </div>
+                {totalDiscounts > 0 && (
+                  <div className="flex justify-between text-rose-500">
+                    <span>ส่วนลดร้านออกให้:</span>
+                    <span className="font-mono font-semibold">-{settings.currencySymbol}{totalDiscounts.toLocaleString()}</span>
+                  </div>
+                )}
                 <div className="pt-2 mt-2 border-t border-zinc-800 flex justify-between font-bold text-amber-600">
-                  <span>ยอดขายรวมทั้งหมด:</span>
-                  <span className="font-mono">{settings.currencySymbol}{totalGrossRevenue.toLocaleString()}</span>
+                  <span>รายได้ร้านสุทธิ:</span>
+                  <span className="font-mono">{settings.currencySymbol}{totalShopRevenue.toLocaleString()}</span>
+                </div>
+                <div className="pt-1.5 mt-1 border-t border-dashed border-zinc-800/60 flex justify-between text-[11px] text-zinc-500">
+                  <span>* เงินทิปช่าง (ส่งมอบช่าง ไม่นับเป็นรายได้ร้าน):</span>
+                  <span className="font-mono text-amber-500 font-semibold">{settings.currencySymbol}{totalTipsRev.toLocaleString()}</span>
                 </div>
               </div>
             </div>

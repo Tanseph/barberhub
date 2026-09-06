@@ -65,7 +65,12 @@ export const ModalAccountingReport: React.FC<ModalAccountingReportProps> = ({
   const totalDiscounts = periodBills.reduce((s, b) => s + (b.totalDiscountAmount || 0), 0);
   const totalHaircutDiscount = periodBills.reduce((s, b) => s + (b.haircutDiscountAmount || 0), 0);
   const totalVoucherDiscount = periodBills.reduce((s, b) => s + (b.voucherDiscountAmount || 0), 0);
-  const totalGross = periodBills.reduce((s, b) => s + b.grossTotal, 0);
+
+  // รายได้ของร้าน (ไม่รวมยอดทิปช่าง เพราะส่งมอบช่าง 100%)
+  const totalShopGrossRevenue = totalHaircutRev + totalChemRev + totalProdRev;
+  const totalShopNetRevenue = Math.max(0, totalShopGrossRevenue - totalDiscounts);
+  const totalCustomerPayments = periodBills.reduce((s, b) => s + b.grossTotal, 0);
+  const totalGross = totalShopNetRevenue;
 
   const totalHaircutComm = periodBills.reduce((s, b) => s + b.commission.barberHaircutEarned, 0);
   const totalChemComm = periodBills.reduce((s, b) => s + b.commission.barberChemicalEarned, 0);
@@ -76,7 +81,7 @@ export const ModalAccountingReport: React.FC<ModalAccountingReportProps> = ({
   const shopGrossProfit = periodBills.reduce((s, b) => s + b.commission.shopNetEarned, 0);
   const totalShopExpenses = periodExpenses.reduce((s, e) => s + e.amount, 0);
   const finalBottomLineProfit = shopGrossProfit - totalShopExpenses;
-  const shopMarginPercent = totalGross > 0 ? ((finalBottomLineProfit / totalGross) * 100).toFixed(1) : '0';
+  const shopMarginPercent = totalShopNetRevenue > 0 ? ((finalBottomLineProfit / totalShopNetRevenue) * 100).toFixed(1) : '0';
 
   const totalCash = periodBills.reduce((s, b) => s + b.cashAmount, 0);
   const totalTransfer = periodBills.reduce((s, b) => s + b.transferAmount, 0);
@@ -296,8 +301,8 @@ export const ModalAccountingReport: React.FC<ModalAccountingReportProps> = ({
               <span className="text-base font-black font-mono text-emerald-600 dark:text-emerald-400">{settings.currencySymbol}{totalCash.toLocaleString()}</span>
             </div>
             <div className="flex flex-col">
-              <span className="text-[11px] text-slate-500 dark:text-zinc-400 font-semibold">💰 ยอดขายสุทธิรวม:</span>
-              <span className="text-base font-black font-mono text-purple-600 dark:text-purple-400">{settings.currencySymbol}{totalGross.toLocaleString()}</span>
+              <span className="text-[11px] text-slate-500 dark:text-zinc-400 font-semibold">💰 รายได้ร้านสุทธิ (ไม่รวมทิป):</span>
+              <span className="text-base font-black font-mono text-purple-600 dark:text-purple-400">{settings.currencySymbol}{totalShopNetRevenue.toLocaleString()}</span>
             </div>
           </div>
 
@@ -306,7 +311,7 @@ export const ModalAccountingReport: React.FC<ModalAccountingReportProps> = ({
             {/* Box 1: Operating Revenue */}
             <div className="p-4 rounded-xl border border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-950/60 print:bg-white print:border-black">
               <div className="text-xs font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-wider mb-2">
-                1. รายได้จากการดำเนินงาน
+                1. รายได้จากการดำเนินงานของร้าน (ไม่รวมทิป)
               </div>
               <div className="space-y-1.5 text-xs">
                 <div className="flex justify-between">
@@ -321,10 +326,6 @@ export const ModalAccountingReport: React.FC<ModalAccountingReportProps> = ({
                   <span>• ขายสินค้า:</span>
                   <span className="font-mono font-semibold">{settings.currencySymbol}{totalProdRev.toLocaleString()}</span>
                 </div>
-                <div className="flex justify-between text-amber-600 dark:text-amber-400">
-                  <span>• เงินทิป:</span>
-                  <span className="font-mono font-semibold">{settings.currencySymbol}{totalTipRev.toLocaleString()}</span>
-                </div>
                 {totalDiscounts > 0 && (
                   <div className="flex justify-between text-rose-500 font-medium">
                     <span>• ส่วนลดร้านออกให้:</span>
@@ -332,8 +333,12 @@ export const ModalAccountingReport: React.FC<ModalAccountingReportProps> = ({
                   </div>
                 )}
                 <div className="pt-2 mt-2 border-t border-slate-200 dark:border-zinc-800 flex justify-between font-bold text-sm text-amber-600 dark:text-amber-400">
-                  <span>ยอดขายรวม:</span>
-                  <span className="font-mono">{settings.currencySymbol}{totalGross.toLocaleString()}</span>
+                  <span>รายได้ร้านสุทธิ:</span>
+                  <span className="font-mono">{settings.currencySymbol}{totalShopNetRevenue.toLocaleString()}</span>
+                </div>
+                <div className="pt-1.5 mt-1 border-t border-dashed border-slate-200 dark:border-zinc-800 flex justify-between text-[11px] text-slate-500 dark:text-zinc-400">
+                  <span>* เงินทิปช่าง (ส่งมอบช่าง ไม่นับเป็นรายได้ร้าน):</span>
+                  <span className="font-mono font-semibold text-amber-500">{settings.currencySymbol}{totalTipRev.toLocaleString()}</span>
                 </div>
               </div>
             </div>
@@ -357,7 +362,7 @@ export const ModalAccountingReport: React.FC<ModalAccountingReportProps> = ({
                   <span className="font-mono font-semibold">{settings.currencySymbol}{totalProdComm.toLocaleString()}</span>
                 </div>
                 <div className="flex justify-between text-amber-600 dark:text-amber-400">
-                  <span>• ทิปส่งมอบช่าง:</span>
+                  <span>• ทิปส่งมอบช่าง (100%):</span>
                   <span className="font-mono font-semibold">{settings.currencySymbol}{totalTipPayout.toLocaleString()}</span>
                 </div>
                 <div className="pt-2 mt-2 border-t border-slate-200 dark:border-zinc-800 flex justify-between font-bold text-sm text-rose-500">
