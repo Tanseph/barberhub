@@ -70,6 +70,10 @@ export interface Barber {
   active: boolean;
   salaryType?: BarberSalaryType; // รูปแบบเงินเดือน: การันตีขั้นต่ำ (ทำไม่ถึงได้ฐาน/ทำเกินได้ตามจริง) | คอมมิชชั่นล้วน | เงินเดือนประจำ+คอมมิชชั่น
   baseSalary?: number; // ฐานเงินเดือนการันตี เช่น 15,000 บาท
+  positionTitle?: string; // ตำแหน่งงาน เช่น ช่างตัดผม, หัวหน้าช่าง
+  positionAllowance?: number; // ค่าตำแหน่ง (บาท)
+  customEarningName?: string; // ชื่อเงินพิเศษที่กำหนดเอง เช่น ค่าเดินทาง, ค่าปิดร้าน
+  customEarningAmount?: number; // จำนวนเงินพิเศษ (บาท)
   notes?: string;
 }
 

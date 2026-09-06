@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
-import { SaleBill, PaymentMethod } from '../types';
+import { SaleBill, PaymentMethod, ShopExpense } from '../types';
 import {
   LayoutDashboard,
   DollarSign,
@@ -33,6 +33,7 @@ import {
   Tag,
   Sparkles,
   ShoppingBag,
+  ArrowUpDown,
 } from 'lucide-react';
 import { sounds } from '../utils/sound';
 import { ModalAccountingReport } from './ModalAccountingReport';
@@ -144,32 +145,54 @@ export const TabDashboard: React.FC = () => {
   // Monthly table filter: show all days (1 to end of month) or only active days with transactions
   const [monthlyShowOnlyActive, setMonthlyShowOnlyActive] = useState<boolean>(false);
 
-  // Search & filter in daily bills table
+  // Search, filter, and sort order in daily bills table
   const [billSearch, setBillSearch] = useState<string>('');
   const [barberFilter, setBarberFilter] = useState<string>('all');
   const [paymentFilter, setPaymentFilter] = useState<string>('all');
+  const [dailySortOrder, setDailySortOrder] = useState<'asc' | 'desc'>('asc'); // 'asc' = เรียงตามลำดับแรกไปล่าสุด (1, 2, 3...), 'desc' = ล่าสุดก่อน
 
   // Billing cycle calculations
   const cutoffDay = settings.billingCycleCutoffDay ?? 0;
   const billingCycleInfo = useMemo(() => getBillingCycleInfo(selectedMonth, cutoffDay), [selectedMonth, cutoffDay]);
+  const { startDate, endDate } = billingCycleInfo;
 
-  // Filtered bills for the current selected period (Daily vs Monthly)
+  // Filtered bills for the current selected period (Daily vs Monthly) - Fast string comparison
   const allPeriodBills = useMemo(() => {
-    return bills.filter((b) =>
-      viewMode === 'daily'
-        ? b.dateStr === selectedDate
-        : isDateInBillingCycle(b.dateStr, selectedMonth, cutoffDay)
-    );
-  }, [bills, viewMode, selectedDate, selectedMonth, cutoffDay]);
+    if (viewMode === 'daily') {
+      return bills.filter((b) => b.dateStr === selectedDate);
+    }
+    return bills.filter((b) => b.dateStr >= startDate && b.dateStr <= endDate);
+  }, [bills, viewMode, selectedDate, startDate, endDate]);
 
   // Filtered shop expenses for the current selected period
   const allPeriodExpenses = useMemo(() => {
-    return expenses.filter((e) =>
-      viewMode === 'daily'
-        ? e.dateStr === selectedDate
-        : isDateInBillingCycle(e.dateStr, selectedMonth, cutoffDay)
-    );
-  }, [expenses, viewMode, selectedDate, selectedMonth, cutoffDay]);
+    if (viewMode === 'daily') {
+      return expenses.filter((e) => e.dateStr === selectedDate);
+    }
+    return expenses.filter((e) => e.dateStr >= startDate && e.dateStr <= endDate);
+  }, [expenses, viewMode, selectedDate, startDate, endDate]);
+
+  // Helper to extract sequence number from billNumber (e.g. B260906-001 -> 1)
+  const getBillSequence = (billNum: string): number => {
+    if (!billNum) return 0;
+    const match = billNum.match(/-(\d+)$/);
+    return match ? parseInt(match[1], 10) : 0;
+  };
+
+  // Helper to extract reliable epoch timestamp
+  const getBillEpoch = (b: SaleBill): number => {
+    if (b.timestamp && !isNaN(b.timestamp) && b.timestamp > 0) {
+      return b.timestamp;
+    }
+    if (b.dateStr && b.timeStr) {
+      const [y, m, d] = b.dateStr.split('-').map(Number);
+      const clean = b.timeStr.replace(/[^\d:.]/g, '').replace('.', ':');
+      const [hh, mm] = clean.split(':').map(Number);
+      const parsed = new Date(y, (m || 1) - 1, d || 1, hh || 0, mm || 0, 0, 0).getTime();
+      if (!isNaN(parsed) && parsed > 0) return parsed;
+    }
+    return 0;
+  };
 
   // Today specific calculations
   const todayBills = useMemo(() => {
@@ -217,8 +240,7 @@ export const TabDashboard: React.FC = () => {
   const transferPercent = totalGrossRevenue > 0 ? Math.round((totalTransfer / totalGrossRevenue) * 100) : 0;
   const cashPercent = totalGrossRevenue > 0 ? 100 - transferPercent : 0;
 
-  // Filtered bills for the daily ledger table (with search & filters applied)
-  // บิลล่าสุดอยู่บนสุด, บิลแรกสุดของวันอยู่ล่างสุด
+  // Filtered bills for the daily ledger table (with search, filters, and sequential order applied)
   const filteredDailyBills = useMemo(() => {
     return allPeriodBills
       .filter((b) => {
@@ -236,33 +258,91 @@ export const TabDashboard: React.FC = () => {
         return true;
       })
       .sort((a, b) => {
-        const timeA = a.timestamp || 0;
-        const timeB = b.timestamp || 0;
-        if (timeB !== timeA) return timeB - timeA;
-        return b.billNumber.localeCompare(a.billNumber);
-      });
-  }, [allPeriodBills, barberFilter, paymentFilter, billSearch]);
+        const seqA = getBillSequence(a.billNumber);
+        const seqB = getBillSequence(b.billNumber);
+        const epochA = getBillEpoch(a);
+        const epochB = getBillEpoch(b);
 
-  // Monthly breakdown day by day
+        if (dailySortOrder === 'asc') {
+          // เรียงตามลำดับแรกไปล่าสุด (1, 2, 3... ตามที่ลงบันทึก)
+          if (seqA > 0 && seqB > 0 && seqA !== seqB) {
+            return seqA - seqB;
+          }
+          if (epochA !== epochB) {
+            return epochA - epochB;
+          }
+          return a.billNumber.localeCompare(b.billNumber);
+        } else {
+          // เรียงตามล่าสุดก่อน
+          if (seqA > 0 && seqB > 0 && seqA !== seqB) {
+            return seqB - seqA;
+          }
+          if (epochA !== epochB) {
+            return epochB - epochA;
+          }
+          return b.billNumber.localeCompare(a.billNumber);
+        }
+      });
+  }, [allPeriodBills, barberFilter, paymentFilter, billSearch, dailySortOrder]);
+
+  // Monthly breakdown day by day - Fast O(N) grouping
   const monthlyDaysSummary = useMemo(() => {
     if (viewMode !== 'monthly') return [];
 
-    return billingCycleInfo.days.map((day) => {
-      const dayBills = bills.filter((b) => b.dateStr === day.dateStr);
-      const dayExpensesList = expenses.filter((e) => e.dateStr === day.dateStr);
+    // Pre-group bills and expenses by date in a single pass O(N)
+    const billsByDate: Record<string, SaleBill[]> = {};
+    for (let i = 0; i < bills.length; i++) {
+      const b = bills[i];
+      if (b.dateStr >= startDate && b.dateStr <= endDate) {
+        if (!billsByDate[b.dateStr]) billsByDate[b.dateStr] = [];
+        billsByDate[b.dateStr].push(b);
+      }
+    }
 
-      const billCount = dayBills.length;
-      const headsCount = dayBills.length;
-      const haircutCount = dayBills.filter((b) => b.haircutFee > 0).length;
-      const transferBillCount = dayBills.filter((b) => b.paymentMethod === 'transfer' || (b.paymentMethod === 'split' && b.transferAmount > 0)).length;
-      const cashBillCount = dayBills.filter((b) => b.paymentMethod === 'cash' || (b.paymentMethod === 'split' && b.cashAmount > 0)).length;
-      const transferAmount = dayBills.reduce((s, b) => s + b.transferAmount, 0);
-      const cashAmount = dayBills.reduce((s, b) => s + b.cashAmount, 0);
-      const grossRevenue = dayBills.reduce((s, b) => s + b.grossTotal, 0);
-      const barberPayroll = dayBills.reduce((s, b) => s + b.commission.barberTotalEarned, 0);
-      const shopExpenseAmount = dayExpensesList.reduce((s, e) => s + e.amount, 0);
+    const expensesByDate: Record<string, ShopExpense[]> = {};
+    for (let i = 0; i < expenses.length; i++) {
+      const e = expenses[i];
+      if (e.dateStr >= startDate && e.dateStr <= endDate) {
+        if (!expensesByDate[e.dateStr]) expensesByDate[e.dateStr] = [];
+        expensesByDate[e.dateStr].push(e);
+      }
+    }
+
+    return billingCycleInfo.days.map((day) => {
+      const dayBills = billsByDate[day.dateStr] || [];
+      const dayExpensesList = expensesByDate[day.dateStr] || [];
+
+      let transferAmount = 0;
+      let cashAmount = 0;
+      let grossRevenue = 0;
+      let barberPayroll = 0;
+      let shopCommissionGross = 0;
+      let haircutCount = 0;
+      let transferBillCount = 0;
+      let cashBillCount = 0;
+
+      for (let j = 0; j < dayBills.length; j++) {
+        const b = dayBills[j];
+        transferAmount += b.transferAmount;
+        cashAmount += b.cashAmount;
+        grossRevenue += b.grossTotal;
+        barberPayroll += b.commission.barberTotalEarned;
+        shopCommissionGross += b.commission.shopNetEarned;
+        if (b.haircutFee > 0) haircutCount++;
+        if (b.paymentMethod === 'transfer' || (b.paymentMethod === 'split' && b.transferAmount > 0)) {
+          transferBillCount++;
+        }
+        if (b.paymentMethod === 'cash' || (b.paymentMethod === 'split' && b.cashAmount > 0)) {
+          cashBillCount++;
+        }
+      }
+
+      let shopExpenseAmount = 0;
+      for (let k = 0; k < dayExpensesList.length; k++) {
+        shopExpenseAmount += dayExpensesList[k].amount;
+      }
+
       const totalExpensesVal = barberPayroll + shopExpenseAmount;
-      const shopCommissionGross = dayBills.reduce((s, b) => s + b.commission.shopNetEarned, 0);
       const shopNet = shopCommissionGross - shopExpenseAmount;
 
       return {
@@ -272,8 +352,8 @@ export const TabDashboard: React.FC = () => {
         dateStr: day.dateStr,
         dayName: day.dayName,
         dayFullDateTh: day.dayFullDateTh,
-        billCount,
-        headsCount,
+        billCount: dayBills.length,
+        headsCount: dayBills.length,
         haircutCount,
         transferBillCount,
         cashBillCount,
@@ -287,7 +367,7 @@ export const TabDashboard: React.FC = () => {
         shopNet,
       };
     });
-  }, [viewMode, billingCycleInfo, bills, expenses]);
+  }, [viewMode, billingCycleInfo, bills, expenses, startDate, endDate]);
 
   const filteredMonthlyDays = useMemo(() => {
     if (!monthlyShowOnlyActive) return monthlyDaysSummary;
@@ -541,7 +621,9 @@ export const TabDashboard: React.FC = () => {
               <button
                 onClick={() => {
                   sounds.playClick();
-                  setViewMode('daily');
+                  React.startTransition(() => {
+                    setViewMode('daily');
+                  });
                 }}
                 className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all btn-tactile ${
                   viewMode === 'daily'
@@ -554,7 +636,9 @@ export const TabDashboard: React.FC = () => {
               <button
                 onClick={() => {
                   sounds.playClick();
-                  setViewMode('monthly');
+                  React.startTransition(() => {
+                    setViewMode('monthly');
+                  });
                 }}
                 className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all btn-tactile ${
                   viewMode === 'monthly'
@@ -1276,6 +1360,23 @@ export const TabDashboard: React.FC = () => {
                     ))}
                   </select>
 
+                  <button
+                    type="button"
+                    onClick={() => {
+                      sounds.playClick();
+                      setDailySortOrder(dailySortOrder === 'asc' ? 'desc' : 'asc');
+                    }}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-bold transition-all btn-tactile ${
+                      isDark
+                        ? 'bg-zinc-900 border-zinc-700 text-zinc-200 hover:bg-zinc-800'
+                        : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                    }`}
+                    title={dailySortOrder === 'asc' ? 'คลิกเพื่อเรียงจากบิลล่าสุดก่อน' : 'คลิกเพื่อเรียงตามลำดับแรกไปล่าสุด (1, 2, 3...)'}
+                  >
+                    <ArrowUpDown className="w-3.5 h-3.5 text-amber-500" />
+                    <span>{dailySortOrder === 'asc' ? 'ลำดับ 1 → 2 → 3' : 'ล่าสุดก่อน'}</span>
+                  </button>
+
                   <select
                     value={paymentFilter}
                     onChange={(e) => setPaymentFilter(e.target.value)}
@@ -1296,7 +1397,7 @@ export const TabDashboard: React.FC = () => {
                 <table className="w-full text-left text-xs">
                   <thead className={`border-b font-semibold ${tableHeaderBg}`}>
                     <tr>
-                      <th className="py-3 px-3.5">บิล & เวลา</th>
+                      <th className="py-3 px-3.5 whitespace-nowrap"># ลำดับ / บิล & เวลา</th>
                       <th className="py-3 px-3.5">ลูกค้า & ช่าง</th>
                       <th className="py-3 px-3.5">รายการบริการ & ส่วนลด</th>
                       <th className="py-3 px-3.5 text-right font-bold text-amber-500">ยอดที่ลูกค้าจ่าย</th>
@@ -1313,7 +1414,7 @@ export const TabDashboard: React.FC = () => {
                         </td>
                       </tr>
                     ) : (
-                      filteredDailyBills.map((bill) => {
+                      filteredDailyBills.map((bill, index) => {
                         const hasDiscount = (bill.totalDiscountAmount || 0) > 0;
                         const subtotalBefore = bill.subtotalBeforeDiscount || (bill.grossTotal + (bill.totalDiscountAmount || 0));
 
@@ -1321,10 +1422,19 @@ export const TabDashboard: React.FC = () => {
                           <tr key={bill.id} className={`${tableRowBg} transition-colors`}>
                             {/* 1. บิล & เวลา */}
                             <td className="py-3 px-3.5 whitespace-nowrap">
-                              <span className="font-mono font-bold text-amber-500 block text-xs">{bill.billNumber}</span>
-                              <span className={`text-[11px] font-mono ${mutedText}`}>{bill.timeStr} น.</span>
+                              <div className="flex items-center gap-2">
+                                <span className={`w-5 h-5 rounded-md flex items-center justify-center font-mono font-bold text-[11px] shrink-0 ${
+                                  isDark ? 'bg-zinc-800 text-amber-400 border border-zinc-700/60' : 'bg-amber-100/80 text-amber-900 border border-amber-200/80'
+                                }`}>
+                                  {dailySortOrder === 'asc' ? index + 1 : filteredDailyBills.length - index}
+                                </span>
+                                <div>
+                                  <span className="font-mono font-bold text-amber-500 block text-xs">{bill.billNumber}</span>
+                                  <span className={`text-[11px] font-mono ${mutedText}`}>{bill.timeStr} น.</span>
+                                </div>
+                              </div>
                               {bill.mergedGroupId && (
-                                <div className="mt-1">
+                                <div className="mt-1 ml-7">
                                   <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-indigo-500/15 text-indigo-400 border border-indigo-500/30">
                                     <Link2 className="w-2.5 h-2.5" />
                                     <span>{bill.mergedGroupName || 'รวมบิล'}</span>

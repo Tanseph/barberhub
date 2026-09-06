@@ -956,8 +956,17 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         dateCode = `${parts[0].slice(-2)}${parts[1]}${parts[2]}`;
       }
     }
-    const billsMatchingDate = bills.filter((b) => b.billNumber.startsWith(`B${dateCode}`));
-    const seq = String(billsMatchingDate.length + 1).padStart(3, '0');
+    let maxSeq = 0;
+    for (const b of bills) {
+      if (b.billNumber && b.billNumber.startsWith(`B${dateCode}-`)) {
+        const parts = b.billNumber.split('-');
+        const num = parseInt(parts[1], 10);
+        if (!isNaN(num) && num > maxSeq) {
+          maxSeq = num;
+        }
+      }
+    }
+    const seq = String(maxSeq + 1).padStart(3, '0');
     const billNumber = `B${dateCode}-${seq}`;
 
     const calculatedCommission =
@@ -972,9 +981,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       );
 
     let billTimestamp = billData.timestamp;
-    if (!billTimestamp) {
+    if (!billTimestamp || isNaN(billTimestamp) || billTimestamp <= 0) {
       if (billData.dateStr && billData.timeStr) {
-        const parsedT = new Date(`${billData.dateStr}T${billData.timeStr}:00`).getTime();
+        const [y, m, d] = billData.dateStr.split('-').map(Number);
+        const clean = billData.timeStr.replace(/[^\d:.]/g, '').replace('.', ':');
+        const [hh, mm] = clean.split(':').map(Number);
+        const parsedT = new Date(y, (m || 1) - 1, d || 1, hh || 0, mm || 0, 0, 0).getTime();
         billTimestamp = isNaN(parsedT) ? Date.now() : parsedT;
       } else {
         billTimestamp = Date.now();
@@ -1053,6 +1065,19 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       const next = prev.map((bill) => {
         if (bill.id === id) {
           const updated = { ...bill, ...updates };
+          if (updates.dateStr || updates.timeStr) {
+            const newDate = updates.dateStr || bill.dateStr;
+            const newTime = updates.timeStr || bill.timeStr;
+            if (newDate && newTime && !updates.timestamp) {
+              const [y, m, d] = newDate.split('-').map(Number);
+              const clean = newTime.replace(/[^\d:.]/g, '').replace('.', ':');
+              const [hh, mm] = clean.split(':').map(Number);
+              const parsedT = new Date(y, (m || 1) - 1, d || 1, hh || 0, mm || 0, 0, 0).getTime();
+              if (!isNaN(parsedT) && parsedT > 0) {
+                updated.timestamp = parsedT;
+              }
+            }
+          }
           if (!updates.commission) {
             updated.commission = calculateCommission(
               updated.barberId,

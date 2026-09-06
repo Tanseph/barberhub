@@ -6,6 +6,7 @@ import { thaiBahtText } from '../utils/thaiBaht';
 import { sounds } from '../utils/sound';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
+import { toPng } from 'html-to-image';
 import {
   Printer,
   Download,
@@ -40,6 +41,9 @@ import {
 export interface BarberAdjustment {
   salaryType?: BarberSalaryType;
   baseSalary: number; // ฐานเงินเดือนการันตี (เช่น 15,000) หรือเงินเดือนประจำ
+  positionAllowance?: number; // ค่าตำแหน่ง
+  customEarningName?: string; // ชื่อรายการเงินพิเศษ (เช่น ค่าปิดร้าน, ค่าเดินทาง, OT)
+  customEarningAmount?: number; // จำนวนเงินพิเศษ
   bonus: number;
   allowance: number;
   manualAdvance: number;
@@ -99,6 +103,9 @@ export const TabPayslip: React.FC = () => {
     return adjustments[key] || {
       salaryType: b?.salaryType || 'guarantee_min',
       baseSalary: b?.baseSalary !== undefined ? b.baseSalary : 15000,
+      positionAllowance: b?.positionAllowance || 0,
+      customEarningName: b?.customEarningName || '',
+      customEarningAmount: b?.customEarningAmount || 0,
       bonus: 0,
       allowance: 0,
       manualAdvance: 0,
@@ -122,6 +129,9 @@ export const TabPayslip: React.FC = () => {
   // Temp state for editing adjustments modal
   const [tempSalaryType, setTempSalaryType] = useState<BarberSalaryType>('guarantee_min');
   const [tempBaseSalary, setTempBaseSalary] = useState<string>('15000');
+  const [tempPositionAllowance, setTempPositionAllowance] = useState<string>('0');
+  const [tempCustomEarningName, setTempCustomEarningName] = useState<string>('');
+  const [tempCustomEarningAmount, setTempCustomEarningAmount] = useState<string>('0');
   const [tempBonus, setTempBonus] = useState<string>('0');
   const [tempAllowance, setTempAllowance] = useState<string>('0');
   const [tempManualAdvance, setTempManualAdvance] = useState<string>('0');
@@ -260,10 +270,20 @@ export const TabPayslip: React.FC = () => {
         isGuaranteeApplied = false;
       }
 
-      // รายได้รวมทั้งหมด (Total Earnings) = workEarnings + ทิป 100% + โบนัส + เงินช่วยเหลือ
+      // รายได้รวมทั้งหมด (Total Earnings) = workEarnings + ทิป 100% + ค่าตำแหน่ง + เงินพิเศษ + โบนัส + เงินช่วยเหลือ
       const bonus = adj.bonus || 0;
       const allowance = adj.allowance || 0;
-      const totalEarnings = workEarnings + tipTotal + bonus + allowance;
+      const positionAllowance = adj.positionAllowance !== undefined
+        ? adj.positionAllowance
+        : (barber.positionAllowance || 0);
+      const customEarningName = adj.customEarningName !== undefined
+        ? adj.customEarningName
+        : (barber.customEarningName || '');
+      const customEarningAmount = adj.customEarningAmount !== undefined
+        ? adj.customEarningAmount
+        : (barber.customEarningAmount || 0);
+
+      const totalEarnings = workEarnings + tipTotal + bonus + allowance + positionAllowance + customEarningAmount;
 
       // รายการหัก (Deductions)
       const otherDeductions = adj.otherDeductions || 0;
@@ -277,6 +297,9 @@ export const TabPayslip: React.FC = () => {
         barber,
         salaryType,
         baseSalary,
+        positionAllowance,
+        customEarningName,
+        customEarningAmount,
         billCount: barberBills.length,
         haircutCount,
         haircutGross,
@@ -346,6 +369,9 @@ export const TabPayslip: React.FC = () => {
     const adj = getBarberAdjustment(barber.id, selectedMonth);
     setTempSalaryType(adj.salaryType || barber.salaryType || 'guarantee_min');
     setTempBaseSalary(String(adj.baseSalary !== undefined ? adj.baseSalary : (barber.baseSalary ?? 15000)));
+    setTempPositionAllowance(String(adj.positionAllowance !== undefined ? adj.positionAllowance : (barber.positionAllowance || 0)));
+    setTempCustomEarningName(adj.customEarningName !== undefined ? adj.customEarningName : (barber.customEarningName || ''));
+    setTempCustomEarningAmount(String(adj.customEarningAmount !== undefined ? adj.customEarningAmount : (barber.customEarningAmount || 0)));
     setTempBonus(String(adj.bonus || 0));
     setTempAllowance(String(adj.allowance || 0));
     setTempManualAdvance(String(adj.manualAdvance || 0));
@@ -362,11 +388,17 @@ export const TabPayslip: React.FC = () => {
     sounds.playSuccess();
 
     const newBaseSalary = parseFloat(tempBaseSalary) || 0;
+    const newPositionAllowance = parseFloat(tempPositionAllowance) || 0;
+    const newCustomAmount = parseFloat(tempCustomEarningAmount) || 0;
+    const newCustomName = tempCustomEarningName.trim();
 
     // Save adjustment for this month
     saveAdjustment(editingBarber.id, selectedMonth, {
       salaryType: tempSalaryType,
       baseSalary: newBaseSalary,
+      positionAllowance: newPositionAllowance,
+      customEarningName: newCustomName,
+      customEarningAmount: newCustomAmount,
       bonus: parseFloat(tempBonus) || 0,
       allowance: parseFloat(tempAllowance) || 0,
       manualAdvance: parseFloat(tempManualAdvance) || 0,
@@ -380,6 +412,9 @@ export const TabPayslip: React.FC = () => {
       updateBarber(editingBarber.id, {
         salaryType: tempSalaryType,
         baseSalary: newBaseSalary,
+        positionAllowance: newPositionAllowance,
+        customEarningName: newCustomName,
+        customEarningAmount: newCustomAmount,
       });
     }
 
@@ -394,10 +429,15 @@ export const TabPayslip: React.FC = () => {
   // Print function
   const handlePrint = () => {
     sounds.playClick();
-    window.print();
+    try {
+      window.focus();
+      window.print();
+    } catch (err) {
+      console.warn('Direct print warning:', err);
+    }
   };
 
-  // Generate PDF via html2canvas + jspdf
+  // Generate PDF via html-to-image / html2canvas + jspdf
   const handleDownloadPdf = async (barberName: string) => {
     const element = document.getElementById('printable-payslip');
     if (!element) {
@@ -408,40 +448,57 @@ export const TabPayslip: React.FC = () => {
     try {
       sounds.playClick();
       setIsGeneratingPdf(true);
-      showToast('กำลังประมวลผลไฟล์ PDF... 📄', 'กรุณารอสักครู่ ระบบกำลังจัดทำสลิปเงินเดือน', 'info');
+      showToast('กำลังประมวลผลไฟล์ PDF... 📄', 'กรุณารอสักครู่ ระบบกำลังจัดทำ Download Report PDF', 'info');
 
-      // Give browser a moment to ensure all fonts and layouts are painted
+      // Ensure fonts and rendering are fully painted
       await new Promise((r) => setTimeout(r, 200));
 
-      const canvas = await html2canvas(element, {
-        scale: 2, // High DPI for crisp printing text
-        useCORS: true,
-        logging: false,
-        backgroundColor: '#ffffff',
-      });
+      let imgData = '';
+      try {
+        imgData = await toPng(element, {
+          quality: 0.98,
+          pixelRatio: 2,
+          backgroundColor: '#ffffff',
+          cacheBust: true,
+        });
+      } catch (imgErr) {
+        console.warn('toPng error, falling back to html2canvas', imgErr);
+        const canvas = await html2canvas(element, {
+          scale: 2,
+          useCORS: true,
+          logging: false,
+          backgroundColor: '#ffffff',
+        });
+        imgData = canvas.toDataURL('image/png');
+      }
 
-      const imgData = canvas.toDataURL('image/png');
+      if (!imgData) {
+        throw new Error('Image data generation failed');
+      }
+
       const pdf = new jsPDF({
         orientation: 'portrait',
         unit: 'mm',
         format: 'a4',
       });
 
-      const imgWidth = 210; // A4 width mm
-      const pageHeight = 297; // A4 height mm
-      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+      const pdfWidth = 210; // A4 width mm
+      const pdfPageHeight = 297; // A4 height mm
+
+      const imgProps = pdf.getImageProperties(imgData);
+      const imgHeight = (imgProps.height * pdfWidth) / imgProps.width;
 
       let heightLeft = imgHeight;
       let position = 0;
 
-      pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
-      heightLeft -= pageHeight;
+      pdf.addImage(imgData, 'PNG', 0, position, pdfWidth, Math.min(imgHeight, pdfPageHeight));
+      heightLeft -= pdfPageHeight;
 
-      while (heightLeft > 0) {
+      while (heightLeft > 5) {
         position = heightLeft - imgHeight;
         pdf.addPage();
-        pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
-        heightLeft -= pageHeight;
+        pdf.addImage(imgData, 'PNG', 0, position, pdfWidth, imgHeight);
+        heightLeft -= pdfPageHeight;
       }
 
       const cleanName = barberName.replace(/[^a-zA-Z0-9ก-๙]/g, '_');
@@ -449,10 +506,10 @@ export const TabPayslip: React.FC = () => {
       pdf.save(filename);
 
       sounds.playSuccess();
-      showToast('ดาวน์โหลดไฟล์ PDF สำเร็จ! ✅', `บันทึกไฟล์ "${filename}" ลงเครื่องเรียบร้อย`, 'success');
+      showToast('ดาวน์โหลดไฟล์ PDF สำเร็จ! ✅', `บันทึกไฟล์ "${filename}" เรียบร้อยแล้ว`, 'success');
     } catch (err) {
       console.error('PDF generation error:', err);
-      showToast('เกิดข้อผิดพลาดในการสร้าง PDF', 'กรุณาลองใช้ปุ่ม "พิมพ์" แล้วเลือกบันทึกเป็น PDF แทน', 'error');
+      showToast('เกิดข้อผิดพลาดในการสร้าง PDF', 'กรุณาลองใหม่อีกครั้ง หรือใช้ปุ่มพิมพ์สลิป', 'error');
     } finally {
       setIsGeneratingPdf(false);
     }
@@ -712,13 +769,13 @@ export const TabPayslip: React.FC = () => {
                     ? 'bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border-zinc-700'
                     : 'bg-white hover:bg-slate-100 text-slate-800 border-slate-300 shadow-2xs'
                 }`}
-                title="แก้ไขฐานเงินเดือน, โบนัส, หรือรายการหัก"
+                title="แก้ไขฐานเงินเดือน, ค่าตำแหน่ง, โบนัส, หรือรายการพิเศษ"
               >
                 <Edit3 className="w-3.5 h-3.5 text-amber-500" />
-                <span>ปรับเงินเดือน / โบนัส / รายการหัก</span>
+                <span>ปรับเงินเดือน / ค่าตำแหน่ง / เงินพิเศษ</span>
               </button>
 
-              {/* Save PDF Button */}
+              {/* Download Report PDF Button */}
               <button
                 type="button"
                 onClick={() => handleDownloadPdf(currentBarberData.barber.nickname)}
@@ -727,7 +784,7 @@ export const TabPayslip: React.FC = () => {
                 title="ดาวน์โหลดเป็นไฟล์ PDF คุณภาพสูง"
               >
                 <Download className="w-4 h-4" />
-                <span>{isGeneratingPdf ? 'กำลังสร้าง PDF...' : 'เซฟไฟล์ PDF'}</span>
+                <span>{isGeneratingPdf ? 'กำลังจัดเตรียม PDF...' : 'Download Report PDF'}</span>
               </button>
 
               {/* Print Button */}
@@ -797,15 +854,15 @@ export const TabPayslip: React.FC = () => {
                   <span className="font-bold text-slate-900 text-sm">{currentBarberData.barber.name}</span>
                 </div>
                 <div>
-                  <span className="text-slate-400 block text-[10px] font-medium">ชื่อเล่น / ตำแหน่ง</span>
+                  <span className="text-slate-400 block text-[10px] font-medium">ชื่อเล่น</span>
                   <span className="font-bold text-slate-800 text-sm">
-                    ช่าง{currentBarberData.barber.nickname} (ช่างตัดผม)
+                    ช่าง{currentBarberData.barber.nickname}
                   </span>
                 </div>
                 <div>
-                  <span className="text-slate-400 block text-[10px] font-medium">อัตราส่วนแบ่งช่าง</span>
-                  <span className="font-bold text-amber-700">
-                    ตัดผม {currentBarberData.barber.haircutCommissionRate}% • เคมี {currentBarberData.barber.chemicalCommissionRate}%
+                  <span className="text-slate-400 block text-[10px] font-medium">ตำแหน่ง</span>
+                  <span className="font-bold text-slate-800 text-sm">
+                    {currentBarberData.barber.positionTitle || 'ช่างตัดผม'}
                   </span>
                 </div>
                 <div>
@@ -814,21 +871,21 @@ export const TabPayslip: React.FC = () => {
                     <div className="mt-0.5">
                       <span className="inline-flex items-center gap-1 font-bold text-amber-800 bg-amber-100/80 border border-amber-300 px-2 py-0.5 rounded text-[11px]">
                         <Target className="w-3 h-3 text-amber-700" />
-                        <span>การันตีขั้นต่ำ {settings.currencySymbol}{currentBarberData.baseSalary.toLocaleString()}</span>
+                        <span>การันตีรายได้ขั้นต่ำ</span>
                       </span>
                     </div>
                   ) : currentBarberData.salaryType === 'fixed_plus_commission' ? (
                     <div className="mt-0.5">
                       <span className="inline-flex items-center gap-1 font-bold text-sky-800 bg-sky-100/80 border border-sky-300 px-2 py-0.5 rounded text-[11px]">
                         <ShieldCheck className="w-3 h-3 text-sky-700" />
-                        <span>เงินเดือน {settings.currencySymbol}{currentBarberData.baseSalary.toLocaleString()} + คอมฯ</span>
+                        <span>เงินเดือนประจำ + คอมฯ</span>
                       </span>
                     </div>
                   ) : (
                     <div className="mt-0.5">
                       <span className="inline-flex items-center gap-1 font-bold text-slate-700 bg-slate-200/80 border border-slate-300 px-2 py-0.5 rounded text-[11px]">
                         <Scissors className="w-3 h-3 text-slate-600" />
-                        <span>คอมมิชชั่นผลงาน 100%</span>
+                        <span>คอมมิชชั่นผลงาน</span>
                       </span>
                     </div>
                   )}
@@ -851,49 +908,40 @@ export const TabPayslip: React.FC = () => {
                     <table className="w-full text-xs">
                       <tbody className="divide-y divide-slate-100">
                         <tr className="hover:bg-slate-50/50">
-                          <td className="py-2 px-3">
+                          <td className="py-2.5 px-3">
                             <div className="text-slate-800 font-medium">ส่วนแบ่งค่าตัดผม</div>
-                            <div className="text-[10px] text-slate-400">
-                              {currentBarberData.haircutCount} หัว (ยอด {settings.currencySymbol}{currentBarberData.haircutGross.toLocaleString()} • เรต {currentBarberData.barber.haircutCommissionRate}%)
-                            </div>
                           </td>
-                          <td className="py-2 px-3 text-right font-mono font-bold text-slate-900">
+                          <td className="py-2.5 px-3 text-right font-mono font-bold text-slate-900">
                             {settings.currencySymbol}{currentBarberData.haircutCommission.toLocaleString()}
                           </td>
                         </tr>
 
                         <tr className="hover:bg-slate-50/50">
-                          <td className="py-2 px-3">
+                          <td className="py-2.5 px-3">
                             <div className="text-slate-800 font-medium">ส่วนแบ่งเคมี / ดัด / ย้อม</div>
-                            <div className="text-[10px] text-slate-400">
-                              {currentBarberData.chemicalCount} งาน (ยอด {settings.currencySymbol}{currentBarberData.chemicalGross.toLocaleString()} • เรต {currentBarberData.barber.chemicalCommissionRate}%)
-                            </div>
                           </td>
-                          <td className="py-2 px-3 text-right font-mono font-bold text-slate-900">
+                          <td className="py-2.5 px-3 text-right font-mono font-bold text-slate-900">
                             {settings.currencySymbol}{currentBarberData.chemicalCommission.toLocaleString()}
                           </td>
                         </tr>
 
                         <tr className="hover:bg-slate-50/50">
-                          <td className="py-2 px-3">
+                          <td className="py-2.5 px-3">
                             <div className="text-slate-800 font-medium">คอมมิชชั่นขายสินค้า</div>
-                            <div className="text-[10px] text-slate-400">
-                              {currentBarberData.productItemsSold} ชิ้น (ยอด {settings.currencySymbol}{currentBarberData.productGross.toLocaleString()} • เรต {currentBarberData.barber.productCommissionRate}%)
-                            </div>
                           </td>
-                          <td className="py-2 px-3 text-right font-mono font-bold text-slate-900">
+                          <td className="py-2.5 px-3 text-right font-mono font-bold text-slate-900">
                             {settings.currencySymbol}{currentBarberData.productCommission.toLocaleString()}
                           </td>
                         </tr>
 
-                        {/* ยอดคอมมิชชั่นผลงานที่ทำได้จริง */}
+                        {/* ยอดรวมคอมมิชชั่นผลงาน */}
                         <tr className="bg-slate-100/70 border-t border-b border-slate-200">
-                          <td className="py-1.5 px-3">
+                          <td className="py-2 px-3">
                             <span className="font-semibold text-[11px] text-slate-700">
-                              รวมคอมมิชชั่นผลงานจริง (Actual Commission)
+                              รวมคอมมิชชั่นผลงาน
                             </span>
                           </td>
-                          <td className="py-1.5 px-3 text-right font-mono font-bold text-slate-800 text-[11px]">
+                          <td className="py-2 px-3 text-right font-mono font-bold text-slate-800 text-[11px]">
                             {settings.currencySymbol}{currentBarberData.totalCommission.toLocaleString()}
                           </td>
                         </tr>
@@ -901,36 +949,16 @@ export const TabPayslip: React.FC = () => {
                         {/* แถวแสดงผลตามกฎการันตีขั้นต่ำ / เงินเดือน */}
                         {currentBarberData.salaryType === 'guarantee_min' && (
                           <>
-                            {currentBarberData.isGuaranteeApplied ? (
+                            {currentBarberData.isGuaranteeApplied && (
                               <tr className="bg-emerald-50/70 border-b border-emerald-100">
-                                <td className="py-2 px-3">
+                                <td className="py-2.5 px-3">
                                   <div className="font-bold text-emerald-900 flex items-center gap-1">
                                     <Sparkles className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
                                     <span>เงินชดเชยการันตีรายได้ขั้นต่ำ (Top-up)</span>
                                   </div>
-                                  <div className="text-[10px] text-emerald-700 mt-0.5 leading-snug">
-                                    ทำยอด {settings.currencySymbol}{currentBarberData.totalCommission.toLocaleString()} ไม่ถึงฐาน {settings.currencySymbol}{currentBarberData.baseSalary.toLocaleString()} ร้านเติมให้ครบฐานขั้นต่ำ
-                                  </div>
                                 </td>
-                                <td className="py-2 px-3 text-right font-mono font-bold text-emerald-700">
+                                <td className="py-2.5 px-3 text-right font-mono font-bold text-emerald-700">
                                   +{settings.currencySymbol}{currentBarberData.guaranteeTopUp.toLocaleString()}
-                                </td>
-                              </tr>
-                            ) : (
-                              <tr className="bg-amber-50/60 border-b border-amber-100">
-                                <td className="py-2 px-3">
-                                  <div className="font-bold text-amber-900 flex items-center gap-1">
-                                    <Award className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-                                    <span>ยอดผลงานทะลุเป้าการันตี (Exceeded)</span>
-                                  </div>
-                                  <div className="text-[10px] text-amber-700 mt-0.5 leading-snug">
-                                    ทำยอด {settings.currencySymbol}{currentBarberData.totalCommission.toLocaleString()} เกินฐาน {settings.currencySymbol}{currentBarberData.baseSalary.toLocaleString()} (ได้รับตามยอดที่ทำได้จริง)
-                                  </div>
-                                </td>
-                                <td className="py-2 px-3 text-right font-mono font-bold text-amber-800 text-[11px]">
-                                  <span className="px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 font-bold">
-                                    รับตามจริง
-                                  </span>
                                 </td>
                               </tr>
                             )}
@@ -939,29 +967,50 @@ export const TabPayslip: React.FC = () => {
 
                         {currentBarberData.salaryType === 'fixed_plus_commission' && currentBarberData.baseSalary > 0 && (
                           <tr className="bg-sky-50/60 border-b border-sky-100">
-                            <td className="py-2 px-3">
+                            <td className="py-2.5 px-3">
                               <div className="text-sky-900 font-medium">เงินเดือนประจำคงที่ (Fixed Base Salary)</div>
                             </td>
-                            <td className="py-2 px-3 text-right font-mono font-bold text-sky-700">
+                            <td className="py-2.5 px-3 text-right font-mono font-bold text-sky-700">
                               +{settings.currencySymbol}{currentBarberData.baseSalary.toLocaleString()}
                             </td>
                           </tr>
                         )}
 
+                        {/* ค่าตำแหน่ง */}
+                        {currentBarberData.positionAllowance > 0 && (
+                          <tr className="hover:bg-slate-50/50">
+                            <td className="py-2.5 px-3 text-slate-800 font-medium">ค่าตำแหน่ง</td>
+                            <td className="py-2.5 px-3 text-right font-mono font-bold text-emerald-600">
+                              +{settings.currencySymbol}{currentBarberData.positionAllowance.toLocaleString()}
+                            </td>
+                          </tr>
+                        )}
+
+                        {/* รายการเงินพิเศษที่กำหนดเอง */}
+                        {currentBarberData.customEarningAmount > 0 && (
+                          <tr className="hover:bg-slate-50/50">
+                            <td className="py-2.5 px-3 text-slate-800 font-medium">
+                              {currentBarberData.customEarningName || 'เงินพิเศษ / รายการพิเศษ'}
+                            </td>
+                            <td className="py-2.5 px-3 text-right font-mono font-bold text-emerald-600">
+                              +{settings.currencySymbol}{currentBarberData.customEarningAmount.toLocaleString()}
+                            </td>
+                          </tr>
+                        )}
+
                         <tr className="hover:bg-slate-50/50">
-                          <td className="py-2 px-3">
+                          <td className="py-2.5 px-3">
                             <div className="text-slate-800 font-medium">เงินทิปจากลูกค้า (Tips)</div>
-                            <div className="text-[10px] text-slate-400">ช่างได้รับเต็ม 100%</div>
                           </td>
-                          <td className="py-2 px-3 text-right font-mono font-bold text-slate-900">
+                          <td className="py-2.5 px-3 text-right font-mono font-bold text-slate-900">
                             {settings.currencySymbol}{currentBarberData.tipTotal.toLocaleString()}
                           </td>
                         </tr>
 
                         {currentBarberData.bonus > 0 && (
                           <tr className="hover:bg-slate-50/50">
-                            <td className="py-2 px-3 text-slate-700">เบี้ยขยัน / โบนัส (Bonus)</td>
-                            <td className="py-2 px-3 text-right font-mono font-bold text-emerald-600">
+                            <td className="py-2.5 px-3 text-slate-700">เบี้ยขยัน / โบนัส (Bonus)</td>
+                            <td className="py-2.5 px-3 text-right font-mono font-bold text-emerald-600">
                               +{settings.currencySymbol}{currentBarberData.bonus.toLocaleString()}
                             </td>
                           </tr>
@@ -969,8 +1018,8 @@ export const TabPayslip: React.FC = () => {
 
                         {currentBarberData.allowance > 0 && (
                           <tr className="hover:bg-slate-50/50">
-                            <td className="py-2 px-3 text-slate-700">เงินช่วยเหลือ / ค่าครองชีพ</td>
-                            <td className="py-2 px-3 text-right font-mono font-bold text-emerald-600">
+                            <td className="py-2.5 px-3 text-slate-700">เงินช่วยเหลือ / ค่าครองชีพ</td>
+                            <td className="py-2.5 px-3 text-right font-mono font-bold text-emerald-600">
                               +{settings.currencySymbol}{currentBarberData.allowance.toLocaleString()}
                             </td>
                           </tr>
@@ -1001,15 +1050,10 @@ export const TabPayslip: React.FC = () => {
                     <table className="w-full text-xs">
                       <tbody className="divide-y divide-slate-100">
                         <tr className="hover:bg-slate-50/50">
-                          <td className="py-2 px-3">
+                          <td className="py-2.5 px-3">
                             <div className="text-slate-800 font-medium">หักเงินเบิกล่วงหน้า (Advance Wages)</div>
-                            <div className="text-[10px] text-slate-400">
-                              {currentBarberData.advanceExpenses.length > 0
-                                ? `เบิก ${currentBarberData.advanceExpenses.length} ครั้งในรอบบิลนี้`
-                                : 'ไม่มีรายการเบิกจ่ายระหว่างเดือน'}
-                            </div>
                           </td>
-                          <td className="py-2 px-3 text-right font-mono font-bold text-rose-600">
+                          <td className="py-2.5 px-3 text-right font-mono font-bold text-rose-600">
                             {currentBarberData.effectiveAdvance > 0
                               ? `-${settings.currencySymbol}${currentBarberData.effectiveAdvance.toLocaleString()}`
                               : '0'}
@@ -1518,18 +1562,73 @@ export const TabPayslip: React.FC = () => {
 
                   <div className="space-y-1">
                     <label className="font-semibold block text-emerald-600 dark:text-emerald-400">
-                      ค่าครองชีพ / อื่นๆ ({settings.currencySymbol})
+                      ค่าตำแหน่ง ({settings.currencySymbol})
                     </label>
                     <input
                       type="number"
                       min="0"
-                      value={tempAllowance}
-                      onChange={(e) => setTempAllowance(e.target.value)}
+                      value={tempPositionAllowance}
+                      onChange={(e) => setTempPositionAllowance(e.target.value)}
+                      placeholder="เช่น 1,000 หรือ 2,000"
                       className={`w-full px-3 py-2 rounded-xl border font-mono font-bold focus:outline-none ${
                         isDark ? 'bg-zinc-950 border-zinc-700 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'
                       }`}
                     />
                   </div>
+                </div>
+
+                {/* 4.1 Custom Extra Allowance (กำหนดชื่อและจำนวนเงินได้เอง) */}
+                <div className="p-3 rounded-xl border space-y-2 bg-slate-50/50 dark:bg-zinc-900/50 border-slate-200 dark:border-zinc-800">
+                  <div className="font-semibold text-emerald-600 dark:text-emerald-400 flex items-center justify-between">
+                    <span>เงินพิเศษ / รายการรายได้เพิ่มเติม (กำหนดเอง)</span>
+                    <span className="text-[10px] text-zinc-400">เผื่อมีเงินพิเศษเฉพาะช่าง</span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    <div className="space-y-1">
+                      <label className={`block text-[11px] ${mutedText}`}>
+                        ชื่อรายการเงินพิเศษ
+                      </label>
+                      <input
+                        type="text"
+                        value={tempCustomEarningName}
+                        onChange={(e) => setTempCustomEarningName(e.target.value)}
+                        placeholder="เช่น ค่าปิดร้าน, ค่าเดินทาง, OT, ค่าสอนงาน"
+                        className={`w-full px-3 py-2 rounded-xl border focus:outline-none ${
+                          isDark ? 'bg-zinc-950 border-zinc-700 text-white' : 'bg-white border-slate-200 text-slate-900'
+                        }`}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className={`block text-[11px] ${mutedText}`}>
+                        จำนวนเงิน ({settings.currencySymbol})
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={tempCustomEarningAmount}
+                        onChange={(e) => setTempCustomEarningAmount(e.target.value)}
+                        placeholder="0"
+                        className={`w-full px-3 py-2 rounded-xl border font-mono font-bold focus:outline-none ${
+                          isDark ? 'bg-zinc-950 border-zinc-700 text-white' : 'bg-white border-slate-200 text-slate-900'
+                        }`}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="font-semibold block text-emerald-600 dark:text-emerald-400">
+                    ค่าครองชีพ / อื่นๆ ({settings.currencySymbol})
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={tempAllowance}
+                    onChange={(e) => setTempAllowance(e.target.value)}
+                    className={`w-full px-3 py-2 rounded-xl border font-mono font-bold focus:outline-none ${
+                      isDark ? 'bg-zinc-950 border-zinc-700 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'
+                    }`}
+                  />
                 </div>
 
                 {/* 5. Deductions */}

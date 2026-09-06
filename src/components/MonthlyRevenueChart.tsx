@@ -68,21 +68,65 @@ export const MonthlyRevenueChart: React.FC<MonthlyRevenueChartProps> = ({
   const cutoffDay = settings.billingCycleCutoffDay ?? 0;
   const billingCycleInfo = useMemo(() => getBillingCycleInfo(selectedMonth, cutoffDay), [selectedMonth, cutoffDay]);
 
+  // Pre-group bills and expenses by date to avoid repeated O(N) filters
+  const billsByDate = useMemo(() => {
+    const map: Record<string, SaleBill[]> = {};
+    for (let i = 0; i < bills.length; i++) {
+      const b = bills[i];
+      if (!map[b.dateStr]) map[b.dateStr] = [];
+      map[b.dateStr].push(b);
+    }
+    return map;
+  }, [bills]);
+
+  const expensesByDate = useMemo(() => {
+    const map: Record<string, ShopExpense[]> = {};
+    for (let i = 0; i < expenses.length; i++) {
+      const e = expenses[i];
+      if (!map[e.dateStr]) map[e.dateStr] = [];
+      map[e.dateStr].push(e);
+    }
+    return map;
+  }, [expenses]);
+
+  // Current month's bills for pie chart and barber performance
+  const currentMonthBills = useMemo(() => {
+    return filterBillsByBillingCycle(bills, selectedMonth, cutoffDay);
+  }, [bills, selectedMonth, cutoffDay]);
+
   // 1. Data for Daily breakdown in the selected month
   const dailyData = useMemo(() => {
     return billingCycleInfo.days.map((d) => {
-      const dayBills = bills.filter((b) => b.dateStr === d.dateStr);
-      const dayExpenses = expenses.filter((e) => e.dateStr === d.dateStr);
+      const dayBills = billsByDate[d.dateStr] || [];
+      const dayExpenses = expensesByDate[d.dateStr] || [];
 
-      const gross = dayBills.reduce((s, b) => s + b.grossTotal, 0);
-      const barberPayroll = dayBills.reduce((s, b) => s + b.commission.barberTotalEarned, 0);
-      const expenseAmount = dayExpenses.reduce((s, e) => s + e.amount, 0);
-      const shopNet = dayBills.reduce((s, b) => s + b.commission.shopNetEarned, 0) - expenseAmount;
-      const transfer = dayBills.reduce((s, b) => s + b.transferAmount, 0);
-      const cash = dayBills.reduce((s, b) => s + b.cashAmount, 0);
-      const haircut = dayBills.reduce((s, b) => s + b.haircutFee, 0);
-      const chemical = dayBills.reduce((s, b) => s + b.chemicalFee, 0);
-      const product = dayBills.reduce((s, b) => s + b.totalProductsFee, 0);
+      let gross = 0;
+      let barberPayroll = 0;
+      let shopCommission = 0;
+      let transfer = 0;
+      let cash = 0;
+      let haircut = 0;
+      let chemical = 0;
+      let product = 0;
+
+      for (let i = 0; i < dayBills.length; i++) {
+        const b = dayBills[i];
+        gross += b.grossTotal;
+        barberPayroll += b.commission.barberTotalEarned;
+        shopCommission += b.commission.shopNetEarned;
+        transfer += b.transferAmount;
+        cash += b.cashAmount;
+        haircut += b.haircutFee;
+        chemical += b.chemicalFee;
+        product += b.totalProductsFee;
+      }
+
+      let expenseAmount = 0;
+      for (let j = 0; j < dayExpenses.length; j++) {
+        expenseAmount += dayExpenses[j].amount;
+      }
+
+      const shopNet = shopCommission - expenseAmount;
 
       return {
         day: d.dayFullDateTh,
@@ -101,7 +145,7 @@ export const MonthlyRevenueChart: React.FC<MonthlyRevenueChartProps> = ({
         billCount: dayBills.length,
       };
     });
-  }, [bills, expenses, billingCycleInfo]);
+  }, [billsByDate, expensesByDate, billingCycleInfo]);
 
   // 2. Data for 6-12 Months historical trend
   const multiMonthData = useMemo(() => {
@@ -118,13 +162,27 @@ export const MonthlyRevenueChart: React.FC<MonthlyRevenueChartProps> = ({
       const monthBills = filterBillsByBillingCycle(bills, mKey, cutoffDay);
       const monthExpenses = filterExpensesByBillingCycle(expenses, mKey, cutoffDay);
 
-      const gross = monthBills.reduce((s, b) => s + b.grossTotal, 0);
-      const barberPayroll = monthBills.reduce((s, b) => s + b.commission.barberTotalEarned, 0);
-      const expenseAmount = monthExpenses.reduce((s, e) => s + e.amount, 0);
-      const shopNet = monthBills.reduce((s, b) => s + b.commission.shopNetEarned, 0) - expenseAmount;
-      const transfer = monthBills.reduce((s, b) => s + b.transferAmount, 0);
-      const cash = monthBills.reduce((s, b) => s + b.cashAmount, 0);
+      let gross = 0;
+      let barberPayroll = 0;
+      let shopCommission = 0;
+      let transfer = 0;
+      let cash = 0;
 
+      for (let j = 0; j < monthBills.length; j++) {
+        const b = monthBills[j];
+        gross += b.grossTotal;
+        barberPayroll += b.commission.barberTotalEarned;
+        shopCommission += b.commission.shopNetEarned;
+        transfer += b.transferAmount;
+        cash += b.cashAmount;
+      }
+
+      let expenseAmount = 0;
+      for (let k = 0; k < monthExpenses.length; k++) {
+        expenseAmount += monthExpenses[k].amount;
+      }
+
+      const shopNet = shopCommission - expenseAmount;
       const monthLabel = d.toLocaleDateString('th-TH', { month: 'short', year: '2-digit' });
 
       months.push({
@@ -145,11 +203,18 @@ export const MonthlyRevenueChart: React.FC<MonthlyRevenueChartProps> = ({
 
   // 3. Data for Service Breakdown in selected month
   const servicePieData = useMemo(() => {
-    const monthBills = filterBillsByBillingCycle(bills, selectedMonth, cutoffDay);
-    const haircut = monthBills.reduce((s, b) => s + b.haircutFee, 0);
-    const chemical = monthBills.reduce((s, b) => s + b.chemicalFee, 0);
-    const product = monthBills.reduce((s, b) => s + b.totalProductsFee, 0);
-    const tip = monthBills.reduce((s, b) => s + b.tipFee, 0);
+    let haircut = 0;
+    let chemical = 0;
+    let product = 0;
+    let tip = 0;
+
+    for (let i = 0; i < currentMonthBills.length; i++) {
+      const b = currentMonthBills[i];
+      haircut += b.haircutFee;
+      chemical += b.chemicalFee;
+      product += b.totalProductsFee;
+      tip += b.tipFee;
+    }
 
     const total = haircut + chemical + product + tip;
     if (total === 0) return [];
@@ -160,17 +225,27 @@ export const MonthlyRevenueChart: React.FC<MonthlyRevenueChartProps> = ({
       { name: 'ขายสินค้า/โพเมด', value: product, color: '#06b6d4', percent: ((product / total) * 100).toFixed(1) },
       { name: 'ทิปช่าง', value: tip, color: '#10b981', percent: ((tip / total) * 100).toFixed(1) },
     ].filter((item) => item.value > 0);
-  }, [bills, selectedMonth, cutoffDay]);
+  }, [currentMonthBills]);
 
   // 4. Data for Barber Performance in selected month
   const barberPerformanceData = useMemo(() => {
-    const monthBills = filterBillsByBillingCycle(bills, selectedMonth, cutoffDay);
     return barbers.map((barber) => {
-      const bBills = monthBills.filter((b) => b.barberId === barber.id);
-      const gross = bBills.reduce((s, b) => s + b.grossTotal, 0);
-      const earned = bBills.reduce((s, b) => s + b.commission.barberTotalEarned, 0);
-      const shopEarned = bBills.reduce((s, b) => s + b.commission.shopNetEarned, 0);
-      const heads = bBills.filter((b) => b.haircutFee > 0).length;
+      let gross = 0;
+      let earned = 0;
+      let shopEarned = 0;
+      let heads = 0;
+      let bBillsCount = 0;
+
+      for (let i = 0; i < currentMonthBills.length; i++) {
+        const b = currentMonthBills[i];
+        if (b.barberId === barber.id) {
+          bBillsCount++;
+          gross += b.grossTotal;
+          earned += b.commission.barberTotalEarned;
+          shopEarned += b.commission.shopNetEarned;
+          if (b.haircutFee > 0) heads++;
+        }
+      }
 
       return {
         name: barber.nickname,
@@ -180,10 +255,10 @@ export const MonthlyRevenueChart: React.FC<MonthlyRevenueChartProps> = ({
         earned,
         shopEarned,
         heads,
-        bills: bBills.length,
+        bills: bBillsCount,
       };
     }).sort((a, b) => b.gross - a.gross);
-  }, [barbers, bills, selectedMonth, cutoffDay]);
+  }, [barbers, currentMonthBills]);
 
   // Stats calculation
   const bestDay = useMemo(() => {

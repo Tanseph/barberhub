@@ -54,6 +54,12 @@ export const ModalDayBills: React.FC<ModalDayBillsProps> = ({
   const dayBills = bills.filter((b) => b.dateStr === dateStr);
   const dayExpenses = expenses.filter((e) => e.dateStr === dateStr);
 
+  const getBillSequence = (billNum: string): number => {
+    if (!billNum) return 0;
+    const match = billNum.match(/-(\d+)$/);
+    return match ? parseInt(match[1], 10) : 0;
+  };
+
   const filteredBills = dayBills
     .filter((b) => {
       if (!search.trim()) return true;
@@ -67,10 +73,15 @@ export const ModalDayBills: React.FC<ModalDayBillsProps> = ({
       );
     })
     .sort((a, b) => {
+      const seqA = getBillSequence(a.billNumber);
+      const seqB = getBillSequence(b.billNumber);
+      if (seqA > 0 && seqB > 0 && seqA !== seqB) {
+        return seqA - seqB;
+      }
       const timeA = a.timestamp || 0;
       const timeB = b.timestamp || 0;
-      if (timeB !== timeA) return timeB - timeA;
-      return b.billNumber.localeCompare(a.billNumber);
+      if (timeA !== timeB) return timeA - timeB;
+      return a.billNumber.localeCompare(b.billNumber);
     });
 
   const filteredExpenses = dayExpenses.filter((e) => {
@@ -288,7 +299,7 @@ export const ModalDayBills: React.FC<ModalDayBillsProps> = ({
                 <table className="w-full text-left text-xs">
                   <thead className={`border-b font-semibold ${isDark ? 'bg-zinc-950 text-zinc-400 border-zinc-800' : 'bg-slate-50 text-slate-600 border-slate-200'}`}>
                     <tr>
-                      <th className="py-2.5 px-3">เลขที่บิล / เวลา</th>
+                      <th className="py-2.5 px-3"># ลำดับ / เลขที่บิล</th>
                       <th className="py-2.5 px-3">ลูกค้า</th>
                       <th className="py-2.5 px-3">ช่าง</th>
                       <th className="py-2.5 px-3 text-right">ตัดผม</th>
@@ -303,11 +314,20 @@ export const ModalDayBills: React.FC<ModalDayBillsProps> = ({
                     </tr>
                   </thead>
                   <tbody className={`divide-y ${isDark ? 'divide-zinc-800/60' : 'divide-slate-200/80'}`}>
-                    {filteredBills.map((bill) => (
+                    {filteredBills.map((bill, index) => (
                       <tr key={bill.id} className={isDark ? 'hover:bg-zinc-800/40 text-zinc-300' : 'hover:bg-slate-50 text-slate-800'}>
                         <td className="py-2.5 px-3 font-mono">
-                          <span className="font-bold text-amber-500 block">{bill.billNumber}</span>
-                          <span className="text-[10px] text-zinc-500">{bill.timeStr} น.</span>
+                          <div className="flex items-center gap-2">
+                            <span className={`w-5 h-5 rounded-md flex items-center justify-center font-mono font-bold text-[11px] shrink-0 ${
+                              isDark ? 'bg-zinc-800 text-amber-400 border border-zinc-700/60' : 'bg-amber-100/80 text-amber-900 border border-amber-200/80'
+                            }`}>
+                              {index + 1}
+                            </span>
+                            <div>
+                              <span className="font-bold text-amber-500 block">{bill.billNumber}</span>
+                              <span className="text-[10px] text-zinc-500">{bill.timeStr} น.</span>
+                            </div>
+                          </div>
                         </td>
                         <td className="py-2.5 px-3 font-semibold">
                           <div>{bill.customerName}</div>

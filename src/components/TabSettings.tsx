@@ -139,6 +139,10 @@ export const TabSettings: React.FC = () => {
   const [barberName, setBarberName] = useState('');
   const [barberNickname, setBarberNickname] = useState('');
   const [barberPhone, setBarberPhone] = useState('');
+  const [barberBaseSalary, setBarberBaseSalary] = useState('15000');
+  const [barberPositionTitle, setBarberPositionTitle] = useState('ช่างตัดผม');
+  const [barberSalaryType, setBarberSalaryType] = useState<'guarantee_min' | 'commission_only' | 'fixed_plus_commission'>('guarantee_min');
+  const [barberPositionAllowance, setBarberPositionAllowance] = useState('0');
 
   // Product Modal State
   const [productModalOpen, setProductModalOpen] = useState(false);
@@ -259,6 +263,10 @@ export const TabSettings: React.FC = () => {
     setBarberName('');
     setBarberNickname('');
     setBarberPhone('');
+    setBarberBaseSalary('15000');
+    setBarberPositionTitle('ช่างตัดผม');
+    setBarberSalaryType('guarantee_min');
+    setBarberPositionAllowance('0');
     setBarberModalOpen(true);
   };
 
@@ -268,6 +276,10 @@ export const TabSettings: React.FC = () => {
     setBarberName(b.name);
     setBarberNickname(b.nickname);
     setBarberPhone(b.phone || '');
+    setBarberBaseSalary(String(b.baseSalary !== undefined ? b.baseSalary : 15000));
+    setBarberPositionTitle(b.positionTitle || 'ช่างตัดผม');
+    setBarberSalaryType(b.salaryType || 'guarantee_min');
+    setBarberPositionAllowance(String(b.positionAllowance || 0));
     setBarberModalOpen(true);
   };
 
@@ -276,16 +288,25 @@ export const TabSettings: React.FC = () => {
     e.preventDefault();
     if (!barberNickname.trim()) return;
 
+    const parsedBaseSalary = parseFloat(barberBaseSalary) || 0;
+    const parsedPositionAllowance = parseFloat(barberPositionAllowance) || 0;
+
     if (editingBarberId) {
       updateBarber(editingBarberId, {
         name: barberName.trim() || barberNickname.trim(),
         nickname: barberNickname.trim(),
         avatar: '💈',
         phone: barberPhone.trim(),
+        baseSalary: parsedBaseSalary,
+        positionTitle: barberPositionTitle.trim() || 'ช่างตัดผม',
+        salaryType: barberSalaryType,
+        positionAllowance: parsedPositionAllowance,
         haircutCommissionRate: settings.defaultHaircutCommission,
         chemicalCommissionRate: settings.defaultChemicalCommission,
         productCommissionRate: settings.defaultProductCommission,
       });
+      sounds.playSuccess();
+      showToast('อัปเดตข้อมูลช่างเรียบร้อย ✂️', `บันทึกข้อมูลและฐานเงินเดือนของช่าง ${barberNickname.trim()} สำเร็จ`, 'success');
     } else {
       addBarber({
         name: barberName.trim() || `ช่าง${barberNickname.trim()}`,
@@ -293,6 +314,10 @@ export const TabSettings: React.FC = () => {
         avatar: '💈',
         phone: barberPhone.trim(),
         color: '#f59e0b',
+        baseSalary: parsedBaseSalary,
+        positionTitle: barberPositionTitle.trim() || 'ช่างตัดผม',
+        salaryType: barberSalaryType,
+        positionAllowance: parsedPositionAllowance,
         haircutCommissionRate: settings.defaultHaircutCommission,
         chemicalCommissionRate: settings.defaultChemicalCommission,
         productCommissionRate: settings.defaultProductCommission,
@@ -300,6 +325,8 @@ export const TabSettings: React.FC = () => {
         active: true,
         notes: '',
       });
+      sounds.playSuccess();
+      showToast('เพิ่มช่างคนใหม่เรียบร้อย 🎉', `เพิ่มช่าง ${barberNickname.trim()} (ฐานเงินเดือน ฿${parsedBaseSalary.toLocaleString()}) สำเร็จ`, 'success');
     }
     setBarberModalOpen(false);
   };
@@ -1139,21 +1166,47 @@ export const TabSettings: React.FC = () => {
               }`}
             >
               <div>
-                <div className="flex items-start justify-between">
-                  <div>
-                    <h4 className={`text-base font-bold ${headingText}`}>{b.nickname}</h4>
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <h4 className={`text-base font-bold truncate ${headingText}`}>{b.nickname}</h4>
+                    {b.name && b.name !== b.nickname && (
+                      <p className={`text-[11px] truncate ${mutedText}`}>{b.name}</p>
+                    )}
                   </div>
+                  <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-500/10 text-amber-500 border border-amber-500/20 shrink-0">
+                    {b.positionTitle || 'ช่างตัดผม'}
+                  </span>
                 </div>
 
-                <div className={`mt-3 py-2 border-t space-y-1 text-xs ${borderSubtle}`}>
-                  <div className="flex justify-between">
-                    <span className={mutedText}>สถานะช่าง:</span>
-                    <span className="font-semibold text-emerald-600">พร้อมให้บริการ</span>
+                <div className={`mt-3 py-2 border-t space-y-1.5 text-xs ${borderSubtle}`}>
+                  <div className="flex justify-between items-center">
+                    <span className={mutedText}>ฐานเงินเดือน:</span>
+                    <span className="font-mono font-bold text-amber-500">
+                      {settings.currencySymbol}{(b.baseSalary ?? 15000).toLocaleString()}
+                    </span>
+                  </div>
+                  {b.positionAllowance && b.positionAllowance > 0 ? (
+                    <div className="flex justify-between items-center">
+                      <span className={mutedText}>ค่าตำแหน่ง:</span>
+                      <span className="font-mono font-bold text-emerald-500">
+                        +{settings.currencySymbol}{b.positionAllowance.toLocaleString()}
+                      </span>
+                    </div>
+                  ) : null}
+                  <div className="flex justify-between items-center">
+                    <span className={mutedText}>รูปแบบ:</span>
+                    <span className="font-medium text-slate-700 dark:text-zinc-300">
+                      {b.salaryType === 'commission_only'
+                        ? 'คอมมิชชั่น 100%'
+                        : b.salaryType === 'fixed_plus_commission'
+                        ? 'เงินเดือน+คอมฯ'
+                        : 'การันตีขั้นต่ำ'}
+                    </span>
                   </div>
                   {b.phone && (
-                    <div className={`flex justify-between text-xs ${mutedText} pt-1`}>
+                    <div className={`flex justify-between items-center text-xs ${mutedText} pt-0.5`}>
                       <span>เบอร์โทร:</span>
-                      <span className="font-mono text-zinc-300">{b.phone}</span>
+                      <span className="font-mono text-zinc-400">{b.phone}</span>
                     </div>
                   )}
                 </div>
@@ -1578,18 +1631,33 @@ export const TabSettings: React.FC = () => {
             </div>
 
             <form onSubmit={handleSaveBarber} className="space-y-4">
-              <div>
-                <label className={`block text-xs font-semibold ${mutedText} mb-1`}>
-                  ชื่อเล่นช่าง <span className="text-rose-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  value={barberNickname}
-                  onChange={(e) => setBarberNickname(e.target.value)}
-                  placeholder="เช่น ช่างเอก, ช่างนนท์"
-                  required
-                  className={inputClass}
-                />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className={`block text-xs font-semibold ${mutedText} mb-1`}>
+                    ชื่อเล่นช่าง <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={barberNickname}
+                    onChange={(e) => setBarberNickname(e.target.value)}
+                    placeholder="เช่น ช่างเอก, ช่างนนท์"
+                    required
+                    className={inputClass}
+                  />
+                </div>
+
+                <div>
+                  <label className={`block text-xs font-semibold ${mutedText} mb-1`}>
+                    ตำแหน่งในร้าน
+                  </label>
+                  <input
+                    type="text"
+                    value={barberPositionTitle}
+                    onChange={(e) => setBarberPositionTitle(e.target.value)}
+                    placeholder="เช่น ช่างตัดผม, ช่างอาวุโส, ผู้จัดการร้าน"
+                    className={inputClass}
+                  />
+                </div>
               </div>
 
               <div>
@@ -1602,6 +1670,129 @@ export const TabSettings: React.FC = () => {
                   onChange={(e) => setBarberName(e.target.value)}
                   placeholder="เช่น เอกชัย สมบูรณ์ดี"
                   className={inputClass}
+                />
+              </div>
+
+              {/* Salary Structure Selector */}
+              <div>
+                <label className={`block text-xs font-semibold ${mutedText} mb-1.5`}>
+                  รูปแบบการคำนวณเงินเดือน
+                </label>
+                <div className="grid grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      sounds.playClick();
+                      setBarberSalaryType('guarantee_min');
+                    }}
+                    className={`p-2 rounded-xl border text-center transition-all text-xs font-bold ${
+                      barberSalaryType === 'guarantee_min'
+                        ? 'bg-amber-500/20 border-amber-500 text-amber-500 ring-1 ring-amber-500'
+                        : isDark
+                        ? 'bg-zinc-800/60 border-zinc-700 text-zinc-400 hover:text-zinc-200'
+                        : 'bg-slate-100 border-slate-200 text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    การันตีขั้นต่ำ
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      sounds.playClick();
+                      setBarberSalaryType('commission_only');
+                    }}
+                    className={`p-2 rounded-xl border text-center transition-all text-xs font-bold ${
+                      barberSalaryType === 'commission_only'
+                        ? 'bg-amber-500/20 border-amber-500 text-amber-500 ring-1 ring-amber-500'
+                        : isDark
+                        ? 'bg-zinc-800/60 border-zinc-700 text-zinc-400 hover:text-zinc-200'
+                        : 'bg-slate-100 border-slate-200 text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    คอมมิชชั่นล้วน
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      sounds.playClick();
+                      setBarberSalaryType('fixed_plus_commission');
+                    }}
+                    className={`p-2 rounded-xl border text-center transition-all text-xs font-bold ${
+                      barberSalaryType === 'fixed_plus_commission'
+                        ? 'bg-sky-500/20 border-sky-500 text-sky-400 ring-1 ring-sky-500'
+                        : isDark
+                        ? 'bg-zinc-800/60 border-zinc-700 text-zinc-400 hover:text-zinc-200'
+                        : 'bg-slate-100 border-slate-200 text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    เงินเดือน+คอมฯ
+                  </button>
+                </div>
+              </div>
+
+              {/* Base Salary Input */}
+              <div className="p-3.5 rounded-xl border space-y-2 bg-amber-500/5 border-amber-500/20">
+                <div className="flex items-center justify-between">
+                  <label className="block text-xs font-bold text-amber-600 dark:text-amber-400">
+                    ฐานเงินเดือน / ฐานการันตีขั้นต่ำ ({settings.currencySymbol}) <span className="text-rose-500">*</span>
+                  </label>
+                  <span className="text-[10px] text-zinc-400">
+                    {barberSalaryType === 'guarantee_min' ? 'ทำไม่ถึงได้ฐาน ทำเกินได้ตามจริง' : 'ฐานเงินเดือนตั้งต้น'}
+                  </span>
+                </div>
+                <input
+                  type="number"
+                  min="0"
+                  step="500"
+                  value={barberBaseSalary}
+                  onChange={(e) => setBarberBaseSalary(e.target.value)}
+                  placeholder="15000"
+                  required
+                  className={`w-full px-3 py-2 rounded-xl border font-mono font-bold text-base focus:outline-none ${
+                    isDark ? 'bg-zinc-950 border-zinc-700 text-amber-400' : 'bg-white border-slate-300 text-amber-600'
+                  }`}
+                />
+
+                {/* Quick Presets for Base Salary */}
+                <div className="flex items-center gap-1.5 flex-wrap pt-1">
+                  <span className="text-[10px] text-zinc-400">เลือกด่วน:</span>
+                  {['10000', '12000', '15000', '18000', '20000'].map((preset) => (
+                    <button
+                      key={preset}
+                      type="button"
+                      onClick={() => {
+                        sounds.playClick();
+                        setBarberBaseSalary(preset);
+                      }}
+                      className={`px-2 py-0.5 rounded-lg text-[11px] font-mono font-semibold border transition-all ${
+                        barberBaseSalary === preset
+                          ? 'bg-amber-500 text-zinc-950 border-amber-500'
+                          : isDark
+                          ? 'bg-zinc-800 text-zinc-300 border-zinc-700 hover:bg-zinc-700'
+                          : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                      }`}
+                    >
+                      {settings.currencySymbol}{Number(preset).toLocaleString()}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Position Allowance */}
+              <div>
+                <label className={`block text-xs font-semibold ${mutedText} mb-1`}>
+                  ค่าตำแหน่ง ({settings.currencySymbol}) <span className="text-[10px] font-normal text-zinc-400">(ถ้ามี)</span>
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  step="100"
+                  value={barberPositionAllowance}
+                  onChange={(e) => setBarberPositionAllowance(e.target.value)}
+                  placeholder="0"
+                  className={`${inputClass} font-mono font-bold`}
                 />
               </div>
 
