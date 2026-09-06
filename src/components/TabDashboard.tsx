@@ -998,7 +998,7 @@ export const TabDashboard: React.FC = () => {
                 {totalHaircuts} หัว
               </span>
             </div>
-            <div className="text-base sm:text-lg font-black font-mono text-zinc-100 dark:text-zinc-100 text-slate-900">
+            <div className={`text-base sm:text-lg font-black font-mono ${isDark ? 'text-amber-400' : 'text-slate-900'}`}>
               {settings.currencySymbol}{totalHaircutRev.toLocaleString()}
             </div>
             {promoHaircutCount > 0 ? (
@@ -1021,7 +1021,7 @@ export const TabDashboard: React.FC = () => {
                 {totalChemicals} รายการ
               </span>
             </div>
-            <div className="text-base sm:text-lg font-black font-mono text-zinc-100 dark:text-zinc-100 text-slate-900">
+            <div className={`text-base sm:text-lg font-black font-mono ${isDark ? 'text-purple-400' : 'text-slate-900'}`}>
               {settings.currencySymbol}{totalChemicalRev.toLocaleString()}
             </div>
             <div className={`text-[10px] ${mutedText} mt-0.5`}>
@@ -1040,7 +1040,7 @@ export const TabDashboard: React.FC = () => {
                 {totalProductsCount} ชิ้น
               </span>
             </div>
-            <div className="text-base sm:text-lg font-black font-mono text-zinc-100 dark:text-zinc-100 text-slate-900">
+            <div className={`text-base sm:text-lg font-black font-mono ${isDark ? 'text-blue-400' : 'text-slate-900'}`}>
               {settings.currencySymbol}{totalProductsRev.toLocaleString()}
             </div>
             <div className={`text-[10px] ${mutedText} mt-0.5`}>
@@ -1056,7 +1056,7 @@ export const TabDashboard: React.FC = () => {
                 <span>ทิปช่าง (ส่งต่อช่าง)</span>
               </span>
             </div>
-            <div className="text-base sm:text-lg font-black font-mono text-amber-500">
+            <div className="text-base sm:text-lg font-black font-mono text-amber-600 dark:text-amber-400">
               {settings.currencySymbol}{totalTipsRev.toLocaleString()}
             </div>
             <div className={`text-[10px] text-amber-600/80 dark:text-amber-400/80 mt-0.5`}>
