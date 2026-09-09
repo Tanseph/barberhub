@@ -447,12 +447,11 @@ export const ModalAccountingReport: React.FC<ModalAccountingReportProps> = ({
                     <th className="py-2.5 px-3 text-right">เคมี (ได้)</th>
                     <th className="py-2.5 px-3 text-right">สินค้า (ได้)</th>
                     <th className="py-2.5 px-3 text-right">ทิป (ได้)</th>
-                    <th className="py-2.5 px-3 text-right font-bold text-emerald-600">รวมจ่ายช่าง</th>
-                    <th className="py-2.5 px-3 text-right font-bold text-amber-600">ร้านได้รับ</th>
+                    <th className="py-2.5 px-3 text-right font-bold text-emerald-600">รวมรายได้ช่าง</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200 dark:divide-zinc-800 print:divide-black">
-                  {barberSummaries.map(({ barber, headsCut, haircutEarned, chemicalEarned, productEarned, tipEarned, totalEarned, shopEarned }) => (
+                  {barberSummaries.map(({ barber, headsCut, haircutEarned, chemicalEarned, productEarned, tipEarned, totalEarned }) => (
                     <tr key={barber.id}>
                       <td className="py-2.5 px-3 font-semibold">
                         {barber.nickname}
@@ -464,9 +463,6 @@ export const ModalAccountingReport: React.FC<ModalAccountingReportProps> = ({
                       <td className="py-2.5 px-3 text-right font-mono">{settings.currencySymbol}{tipEarned.toLocaleString()}</td>
                       <td className="py-2.5 px-3 text-right font-mono font-bold text-emerald-600">
                         {settings.currencySymbol}{totalEarned.toLocaleString()}
-                      </td>
-                      <td className="py-2.5 px-3 text-right font-mono font-bold text-amber-600">
-                        {settings.currencySymbol}{shopEarned.toLocaleString()}
                       </td>
                     </tr>
                   ))}
@@ -480,9 +476,6 @@ export const ModalAccountingReport: React.FC<ModalAccountingReportProps> = ({
                     <td className="py-2.5 px-3 text-right font-mono">{settings.currencySymbol}{totalTipPayout.toLocaleString()}</td>
                     <td className="py-2.5 px-3 text-right font-mono text-emerald-600 text-sm">
                       {settings.currencySymbol}{totalBarberPayout.toLocaleString()}
-                    </td>
-                    <td className="py-2.5 px-3 text-right font-mono text-amber-600 text-sm">
-                      {settings.currencySymbol}{shopGrossProfit.toLocaleString()}
                     </td>
                   </tr>
                 </tbody>

@@ -200,8 +200,7 @@ export async function exportReportToPDF({
               <th style="padding: 6px 8px; text-align: right;">เคมี (ได้)</th>
               <th style="padding: 6px 8px; text-align: right;">สินค้า (ได้)</th>
               <th style="padding: 6px 8px; text-align: right;">ทิป (ได้)</th>
-              <th style="padding: 6px 8px; text-align: right; color: #059669; font-weight: bold;">รวมจ่ายช่าง</th>
-              <th style="padding: 6px 8px; text-align: right; color: #b45309; font-weight: bold;">ร้านได้รับ</th>
+              <th style="padding: 6px 8px; text-align: right; color: #059669; font-weight: bold;">รวมรายได้ช่าง</th>
             </tr>
           </thead>
           <tbody>
@@ -216,7 +215,6 @@ export async function exportReportToPDF({
                 <td style="padding: 6px 8px; text-align: right; font-family: monospace;">฿${b.productEarned.toLocaleString()}</td>
                 <td style="padding: 6px 8px; text-align: right; font-family: monospace;">฿${b.tipEarned.toLocaleString()}</td>
                 <td style="padding: 6px 8px; text-align: right; font-family: monospace; font-weight: bold; color: #059669;">฿${b.totalEarned.toLocaleString()}</td>
-                <td style="padding: 6px 8px; text-align: right; font-family: monospace; font-weight: bold; color: #b45309;">฿${b.shopEarned.toLocaleString()}</td>
               </tr>
             `
               )
@@ -229,7 +227,6 @@ export async function exportReportToPDF({
               <td style="padding: 6px 8px; text-align: right; font-family: monospace;">฿${totalProdComm.toLocaleString()}</td>
               <td style="padding: 6px 8px; text-align: right; font-family: monospace;">฿${totalTipPayout.toLocaleString()}</td>
               <td style="padding: 6px 8px; text-align: right; font-family: monospace; color: #059669; font-size: 12px;">฿${totalBarberPayout.toLocaleString()}</td>
-              <td style="padding: 6px 8px; text-align: right; font-family: monospace; color: #b45309; font-size: 12px;">฿${shopGrossProfit.toLocaleString()}</td>
             </tr>
           </tbody>
         </table>

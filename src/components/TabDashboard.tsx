@@ -1727,12 +1727,11 @@ export const TabDashboard: React.FC = () => {
                   <th className="py-3 px-3 text-right">เคมี (ได้)</th>
                   <th className="py-3 px-3 text-right">สินค้า (ได้)</th>
                   <th className="py-3 px-3 text-right">ทิป</th>
-                  <th className="py-3 px-3 text-right font-bold text-rose-500">รวมช่างรับ (Payroll)</th>
-                  <th className="py-3 px-4 text-right font-bold text-purple-600">ร้านได้รับสุทธิ</th>
+                  <th className="py-3 px-3 text-right font-bold text-rose-500">รวมรายได้ช่าง (Payroll)</th>
                 </tr>
               </thead>
               <tbody className={`divide-y ${isDark ? 'divide-zinc-800/60' : 'divide-slate-200/80'}`}>
-                {barberSummaries.map(({ barber, headsCut, haircutEarned, chemicalEarned, productEarned, tipEarned, totalEarned, shopEarned }) => (
+                {barberSummaries.map(({ barber, headsCut, haircutEarned, chemicalEarned, productEarned, tipEarned, totalEarned }) => (
                   <tr key={barber.id} className={tableRowBg}>
                     <td className="py-3 px-4 font-semibold">
                       <span>{barber.nickname}</span>
@@ -1742,11 +1741,8 @@ export const TabDashboard: React.FC = () => {
                     <td className="py-3 px-3 text-right font-mono">{settings.currencySymbol}{chemicalEarned.toLocaleString()}</td>
                     <td className="py-3 px-3 text-right font-mono">{settings.currencySymbol}{productEarned.toLocaleString()}</td>
                     <td className="py-3 px-3 text-right font-mono text-amber-600">{settings.currencySymbol}{tipEarned.toLocaleString()}</td>
-                    <td className="py-3 px-3 text-right font-mono font-bold text-rose-500 bg-rose-500/5">
+                    <td className="py-3 px-4 text-right font-mono font-bold text-rose-500 bg-rose-500/5">
                       {settings.currencySymbol}{totalEarned.toLocaleString()}
-                    </td>
-                    <td className="py-3 px-4 text-right font-mono font-bold text-purple-600">
-                      {settings.currencySymbol}{shopEarned.toLocaleString()}
                     </td>
                   </tr>
                 ))}
@@ -1760,11 +1756,8 @@ export const TabDashboard: React.FC = () => {
                   <td className="py-3 px-3 text-right font-mono">{settings.currencySymbol}{totalChemicalComm.toLocaleString()}</td>
                   <td className="py-3 px-3 text-right font-mono">{settings.currencySymbol}{totalProductsComm.toLocaleString()}</td>
                   <td className="py-3 px-3 text-right font-mono text-amber-600">{settings.currencySymbol}{totalTipsPayout.toLocaleString()}</td>
-                  <td className="py-3 px-3 text-right font-mono text-rose-500 text-sm">
+                  <td className="py-3 px-4 text-right font-mono text-rose-500 text-sm">
                     {settings.currencySymbol}{totalBarberPayout.toLocaleString()}
-                  </td>
-                  <td className="py-3 px-4 text-right font-mono text-purple-600 text-sm">
-                    {settings.currencySymbol}{totalShopNet.toLocaleString()}
                   </td>
                 </tr>
               </tbody>

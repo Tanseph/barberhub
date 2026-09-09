@@ -689,13 +689,6 @@ export const MonthlyRevenueChart: React.FC<MonthlyRevenueChartProps> = ({
                 radius={[0, 6, 6, 0]}
                 maxBarSize={20}
               />
-              <Bar
-                dataKey="shopEarned"
-                name="ส่วนแบ่งที่ร้านได้รับ"
-                fill="#8b5cf6"
-                radius={[0, 6, 6, 0]}
-                maxBarSize={20}
-              />
             </ComposedChart>
           </ResponsiveContainer>
         )}

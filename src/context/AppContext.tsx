@@ -149,6 +149,8 @@ interface AppContextType {
   updateQueueBooking: (id: string, updates: Partial<QueueBooking>) => void;
   deleteQueueBooking: (id: string) => void;
   changeQueueStatus: (id: string, status: QueueStatus) => void;
+  clearPastQueues: () => number;
+  syncAutoQueueStatuses: () => number;
 
   // Modals & UI helpers
   toasts: ToastMessage[];
@@ -214,6 +216,92 @@ function getTenantStorageKeys(shopId: string) {
     QUEUES: `barber_pos_${shopId}_queues_v2`,
   };
 }
+
+// Helper: Standardize time string into HH:mm format for reliable comparison
+export const normalizeTimeStr = (t?: string): string => {
+  if (!t) return '00:00';
+  const clean = t.trim().replace('.', ':');
+  const parts = clean.split(':');
+  const h = String(parseInt(parts[0] || '0', 10)).padStart(2, '0');
+  const m = String(parseInt(parts[1] || '0', 10)).padStart(2, '0');
+  return `${h}:${m}`;
+};
+
+// Automatic queue status calculator based on real-time schedule:
+// - If not yet reached startTime: 'waiting' ("รอตัด")
+// - If reached startTime and before endTime: 'in_progress' ("กำลังตัด")
+// - If reached or past endTime: 'completed' ("เสร็จแล้ว")
+export const calculateAutoQueueStatus = (
+  q: QueueBooking,
+  now: Date = new Date()
+): QueueStatus => {
+  // If cancelled or leave/blocked slot, retain cancelled
+  if (q.status === 'cancelled' || q.isLeaveOrBlocked) {
+    return 'cancelled';
+  }
+
+  // If already linked to a paid bill in POS, retain completed
+  if (q.createdBillId) {
+    return 'completed';
+  }
+
+  const currentYear = now.getFullYear();
+  const currentMonth = String(now.getMonth() + 1).padStart(2, '0');
+  const currentDate = String(now.getDate()).padStart(2, '0');
+  const todayStr = `${currentYear}-${currentMonth}-${currentDate}`;
+
+  const currentH = String(now.getHours()).padStart(2, '0');
+  const currentM = String(now.getMinutes()).padStart(2, '0');
+  const currentTimeStr = `${currentH}:${currentM}`;
+
+  const qDate = q.date;
+  if (!qDate) return q.status || 'waiting';
+
+  if (qDate > todayStr) {
+    return 'waiting';
+  }
+
+  if (qDate < todayStr) {
+    return 'completed';
+  }
+
+  // Same day: qDate === todayStr
+  const start = normalizeTimeStr(q.startTime);
+  let end = normalizeTimeStr(q.endTime);
+
+  // If endTime is missing or not strictly after startTime, default to 30 mins
+  if (end <= start) {
+    const [sh, sm] = start.split(':').map(Number);
+    const totalM = (sh * 60 + sm) + 30;
+    const eh = String(Math.floor(totalM / 60) % 24).padStart(2, '0');
+    const em = String(totalM % 60).padStart(2, '0');
+    end = `${eh}:${em}`;
+  }
+
+  // If already completed manually before end time, retain completed
+  if (q.status === 'completed') {
+    return 'completed';
+  }
+
+  // If current time has reached/passed endTime -> completed ("พอหมดเวลาคิวก็ขึ้นว่าเสร็จแล้ว โดยอัตโนมัติ")
+  if (currentTimeStr >= end) {
+    return 'completed';
+  }
+
+  // If current time has reached startTime -> in_progress ("พอถึง ก็ขึ้นว่ากำลังตัด")
+  if (currentTimeStr >= start) {
+    return 'in_progress';
+  }
+
+  // If current time is before startTime:
+  // If the barber manually started cutting early, preserve in_progress
+  if (q.status === 'in_progress') {
+    return 'in_progress';
+  }
+
+  // Otherwise waiting ("ถ้ายังไม่ถึงเวลา ก็ขึ้น รอตัด")
+  return 'waiting';
+};
 
 export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   // Current logged in email
@@ -313,12 +401,21 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     return [];
   });
 
-  // 6. Queues
+  // 6. Queues (Auto-clears past day queues on initialization & syncs auto status)
   const [queues, setQueues] = useState<QueueBooking[]>(() => {
+    const today = new Date();
+    const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
     if (storageKeys) {
       try {
         const saved = localStorage.getItem(storageKeys.QUEUES);
-        if (saved) return JSON.parse(saved);
+        if (saved) {
+          const parsed: QueueBooking[] = JSON.parse(saved);
+          const activeOnly = parsed
+            .filter((q) => !q.date || q.date >= todayStr)
+            .map((q) => ({ ...q, status: calculateAutoQueueStatus(q, today) }));
+          localStorage.setItem(storageKeys.QUEUES, JSON.stringify(activeOnly));
+          return activeOnly;
+        }
       } catch (e) {
         console.error(e);
       }
@@ -758,9 +855,24 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         localStorage.setItem(keys.EXPENSES, JSON.stringify(cloudExpenses || []));
       },
       onQueues: (cloudQueues) => {
-        setQueues(cloudQueues || []);
+        const today = new Date();
+        const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+        const allQ = cloudQueues || [];
+        const activeQueues = allQ
+          .filter((q) => !q.date || q.date >= todayStr)
+          .map((q) => ({ ...q, status: calculateAutoQueueStatus(q, today) }));
+        const pastQueues = allQ.filter((q) => q.date && q.date < todayStr);
+
+        // Permanently purge past queues from Cloud Firestore so they don't linger
+        if (pastQueues.length > 0 && currentShopId) {
+          pastQueues.forEach((pq) => {
+            deleteDocumentFromCloud(currentShopId, 'queues', pq.id).catch(console.error);
+          });
+        }
+
+        setQueues(activeQueues);
         const keys = getTenantStorageKeys(currentShopId);
-        localStorage.setItem(keys.QUEUES, JSON.stringify(cloudQueues || []));
+        localStorage.setItem(keys.QUEUES, JSON.stringify(activeQueues));
       },
     });
 
@@ -1322,8 +1434,18 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const seq = String(qToday.length + 1).padStart(3, '0');
     const queueNumber = `Q${dateCode}-${seq}`;
 
+    const initialStatus = queueData.status === 'cancelled' || queueData.isLeaveOrBlocked
+      ? 'cancelled'
+      : calculateAutoQueueStatus({
+          ...queueData,
+          id: '',
+          queueNumber: '',
+          createdAt: Date.now(),
+        }, today);
+
     const newQueue: QueueBooking = {
       ...queueData,
+      status: initialStatus,
       id: `queue-${Date.now()}`,
       queueNumber,
       createdAt: Date.now(),
@@ -1352,9 +1474,14 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   const updateQueueBooking = (id: string, updates: Partial<QueueBooking>) => {
     setQueues((prev) => {
+      const now = new Date();
       const next = prev.map((q) => {
         if (q.id === id) {
-          const updated = { ...q, ...updates };
+          const merged = { ...q, ...updates };
+          const finalStatus = updates.status !== undefined
+            ? updates.status
+            : calculateAutoQueueStatus(merged, now);
+          const updated = { ...merged, status: finalStatus };
           if (currentShopId) {
             saveDocumentToCloud(currentShopId, 'queues', updated).catch(console.error);
           }
@@ -1390,6 +1517,91 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const changeQueueStatus = (id: string, status: QueueStatus) => {
     updateQueueBooking(id, { status });
   };
+
+  // Automated queue status synchronization: transitions waiting -> in_progress -> completed
+  const syncAutoQueueStatuses = useCallback((): number => {
+    const now = new Date();
+    let updatedCount = 0;
+
+    setQueues((prev) => {
+      let hasChanges = false;
+      const next = prev.map((q) => {
+        const targetStatus = calculateAutoQueueStatus(q, now);
+        if (q.status !== targetStatus) {
+          hasChanges = true;
+          updatedCount++;
+          const updatedQ = { ...q, status: targetStatus };
+          if (currentShopId) {
+            saveDocumentToCloud(currentShopId, 'queues', updatedQ).catch(console.error);
+          }
+          return updatedQ;
+        }
+        return q;
+      });
+
+      if (!hasChanges) return prev;
+
+      if (currentShopId) {
+        const keys = getTenantStorageKeys(currentShopId);
+        localStorage.setItem(keys.QUEUES, JSON.stringify(next));
+      }
+      return next;
+    });
+
+    return updatedCount;
+  }, [currentShopId]);
+
+  // Clear past day queues permanently from system and cloud
+  const clearPastQueues = useCallback((): number => {
+    const today = new Date();
+    const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    let purgedCount = 0;
+
+    setQueues((prev) => {
+      const past = prev.filter((q) => q.date && q.date < todayStr);
+      purgedCount = past.length;
+      if (purgedCount === 0) return prev;
+
+      const remaining = prev.filter((q) => !q.date || q.date >= todayStr);
+      if (currentShopId) {
+        const keys = getTenantStorageKeys(currentShopId);
+        localStorage.setItem(keys.QUEUES, JSON.stringify(remaining));
+        past.forEach((pq) => {
+          deleteDocumentFromCloud(currentShopId, 'queues', pq.id).catch(console.error);
+        });
+      }
+      return remaining;
+    });
+
+    return purgedCount;
+  }, [currentShopId]);
+
+  // Automated daily cleanup & real-time queue status sync (every 5s & on focus/visibility change)
+  useEffect(() => {
+    clearPastQueues();
+    syncAutoQueueStatuses();
+
+    const timer = setInterval(() => {
+      clearPastQueues();
+      syncAutoQueueStatuses();
+    }, 5000);
+
+    const handleFocusOrVisible = () => {
+      if (document.visibilityState === 'visible') {
+        clearPastQueues();
+        syncAutoQueueStatuses();
+      }
+    };
+
+    window.addEventListener('visibilitychange', handleFocusOrVisible);
+    window.addEventListener('focus', handleFocusOrVisible);
+
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener('visibilitychange', handleFocusOrVisible);
+      window.removeEventListener('focus', handleFocusOrVisible);
+    };
+  }, [clearPastQueues, syncAutoQueueStatuses]);
 
   // Modals & UI controls
   const openConfirm = (options: {
@@ -1581,6 +1793,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         updateQueueBooking,
         deleteQueueBooking,
         changeQueueStatus,
+        clearPastQueues,
+        syncAutoQueueStatuses,
         toasts,
         showToast,
         removeToast,

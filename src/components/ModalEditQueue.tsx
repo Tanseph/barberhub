@@ -66,6 +66,9 @@ export const ModalEditQueue: React.FC<ModalEditQueueProps> = ({
   const [status, setStatus] = useState<QueueStatus>('waiting');
   const [notes, setNotes] = useState('');
 
+  const today = new Date();
+  const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+
   // Sync state when queue changes
   useEffect(() => {
     if (queue) {
@@ -246,6 +249,7 @@ export const ModalEditQueue: React.FC<ModalEditQueueProps> = ({
               </label>
               <input
                 type="date"
+                min={todayStr}
                 value={date}
                 onChange={(e) => setDate(e.target.value)}
                 required
@@ -336,7 +340,7 @@ export const ModalEditQueue: React.FC<ModalEditQueueProps> = ({
               {[
                 { id: 'waiting', label: '🕒 รอตัด', color: 'border-amber-500 bg-amber-500/15 text-amber-500' },
                 { id: 'in_progress', label: '✂️ กำลังตัด', color: 'border-sky-500 bg-sky-500/15 text-sky-500' },
-                { id: 'completed', label: '✅ เสร็จสิ้น', color: 'border-emerald-500 bg-emerald-500/15 text-emerald-500' },
+                { id: 'completed', label: '✅ เสร็จแล้ว', color: 'border-emerald-500 bg-emerald-500/15 text-emerald-500' },
                 { id: 'cancelled', label: '❌ ยกเลิก', color: 'border-rose-500 bg-rose-500/15 text-rose-500' },
               ].map((st) => {
                 const isSel = status === st.id;
