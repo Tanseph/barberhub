@@ -172,7 +172,7 @@ export const TabPayslip: React.FC = () => {
     return barbers.map((barber) => {
       const barberBills = periodBills.filter((b) => b.barberId === barber.id);
 
-      const haircutCount = barberBills.filter((b) => b.haircutFee > 0).length;
+      const haircutCount = barberBills.reduce((s, b) => s + (b.haircutFee > 0 ? (b.headCount && b.headCount > 0 ? b.headCount : 1) : 0), 0);
       const haircutGross = barberBills.reduce((s, b) => s + b.haircutFee, 0);
       const haircutCommission = barberBills.reduce(
         (s, b) => s + (b.commission?.barberHaircutEarned ?? 0),

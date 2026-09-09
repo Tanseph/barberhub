@@ -23,6 +23,7 @@ export const ModalEditBill: React.FC = () => {
   const [billDate, setBillDate] = useState('');
   const [billTime, setBillTime] = useState('');
   const [haircutFee, setHaircutFee] = useState<number>(0);
+  const [headCount, setHeadCount] = useState<number>(1);
   const [chemicalFee, setChemicalFee] = useState<number>(0);
   const [tipFee, setTipFee] = useState<number>(0);
   const [hasHaircutPromo10, setHasHaircutPromo10] = useState<boolean>(false);
@@ -41,6 +42,7 @@ export const ModalEditBill: React.FC = () => {
       setBillDate(editingBill.dateStr || '');
       setBillTime(editingBill.timeStr || '');
       setHaircutFee(editingBill.haircutFee);
+      setHeadCount(editingBill.haircutFee > 0 ? (editingBill.headCount || 1) : 0);
       setChemicalFee(editingBill.chemicalFee);
       setTipFee(editingBill.tipFee);
       setHasHaircutPromo10(editingBill.hasHaircutDiscount10 ?? false);
@@ -93,6 +95,7 @@ export const ModalEditBill: React.FC = () => {
       customerPhone: editingBill.customerPhone || '',
       dateStr: billDate || editingBill.dateStr,
       timeStr: billTime || editingBill.timeStr,
+      headCount: Number(haircutFee) > 0 ? Math.max(1, headCount) : 0,
       haircutFee: Number(haircutFee) || 0,
       chemicalFee: Number(chemicalFee) || 0,
       tipFee: Number(tipFee) || 0,
@@ -212,16 +215,62 @@ export const ModalEditBill: React.FC = () => {
           {/* Services & Fees */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
-              <label className={`block text-xs font-semibold ${mutedText} mb-1.5`}>
-                ค่าตัดผม ({settings.currencySymbol})
-              </label>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className={`block text-xs font-semibold ${mutedText}`}>
+                  ค่าตัดผม ({settings.currencySymbol})
+                </label>
+                {Number(haircutFee) > 0 ? (
+                  <span className="text-[10px] font-bold text-emerald-500 font-mono">
+                    {headCount} หัว
+                  </span>
+                ) : (
+                  <span className="text-[10px] font-bold text-amber-500">
+                    0 หัว (ซื้อสินค้า)
+                  </span>
+                )}
+              </div>
               <input
                 type="number"
                 min="0"
                 value={haircutFee}
-                onChange={(e) => setHaircutFee(Number(e.target.value))}
+                onChange={(e) => {
+                  const val = Number(e.target.value);
+                  setHaircutFee(val);
+                  if (val > 0 && headCount === 0) {
+                    setHeadCount(1);
+                  } else if (val === 0) {
+                    setHeadCount(0);
+                  }
+                }}
                 className={`${inputClass} font-semibold text-emerald-600`}
               />
+              {Number(haircutFee) > 0 ? (
+                <div className="mt-1.5 flex items-center justify-between text-[11px]">
+                  <span className={mutedText}>จำนวนหัว:</span>
+                  <div className="flex items-center gap-1">
+                    {[1, 2, 3].map((num) => (
+                      <button
+                        type="button"
+                        key={num}
+                        onClick={() => setHeadCount(num)}
+                        className={`px-2 py-0.5 rounded text-[11px] font-bold transition-all ${
+                          headCount === num
+                            ? 'bg-emerald-600 text-white shadow-xs'
+                            : isDark
+                            ? 'bg-zinc-800 text-zinc-300 hover:text-white'
+                            : 'bg-slate-200 text-slate-700 hover:text-slate-900'
+                        }`}
+                      >
+                        {num} หัว
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <div className="mt-1 text-[11px] text-amber-500 font-medium">
+                  🛒 ซื้อสินค้าอย่างเดียว (ไม่นับหัว)
+                </div>
+              )}
             </div>
             <div>
               <label className={`block text-xs font-semibold ${mutedText} mb-1.5`}>

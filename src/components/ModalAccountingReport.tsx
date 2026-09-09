@@ -85,7 +85,7 @@ export const ModalAccountingReport: React.FC<ModalAccountingReportProps> = ({
 
   const totalCash = periodBills.reduce((s, b) => s + b.cashAmount, 0);
   const totalTransfer = periodBills.reduce((s, b) => s + b.transferAmount, 0);
-  const totalHeads = periodBills.filter((b) => b.haircutFee > 0).length;
+  const totalHeads = periodBills.reduce((s, b) => s + (b.haircutFee > 0 ? (b.headCount && b.headCount > 0 ? b.headCount : 1) : 0), 0);
   const totalBills = periodBills.length;
   const transferBillCount = periodBills.filter((b) => b.paymentMethod === 'transfer' || (b.paymentMethod === 'split' && b.transferAmount > 0)).length;
   const cashBillCount = periodBills.filter((b) => b.paymentMethod === 'cash' || (b.paymentMethod === 'split' && b.cashAmount > 0)).length;

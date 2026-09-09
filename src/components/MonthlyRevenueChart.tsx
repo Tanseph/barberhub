@@ -243,7 +243,9 @@ export const MonthlyRevenueChart: React.FC<MonthlyRevenueChartProps> = ({
           gross += Math.max(0, (b.haircutFee + b.chemicalFee + b.totalProductsFee) - (b.totalDiscountAmount || 0));
           earned += b.commission.barberTotalEarned;
           shopEarned += b.commission.shopNetEarned;
-          if (b.haircutFee > 0) heads++;
+          if (b.haircutFee > 0) {
+            heads += (b.headCount && b.headCount > 0 ? b.headCount : 1);
+          }
         }
       }
 

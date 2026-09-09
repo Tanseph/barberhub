@@ -62,7 +62,7 @@ export async function exportReportToPDF({
 
   const totalCash = periodBills.reduce((s, b) => s + b.cashAmount, 0);
   const totalTransfer = periodBills.reduce((s, b) => s + b.transferAmount, 0);
-  const totalHeads = periodBills.filter((b) => b.haircutFee > 0).length;
+  const totalHeads = periodBills.reduce((s, b) => s + (b.haircutFee > 0 ? (b.headCount && b.headCount > 0 ? b.headCount : 1) : 0), 0);
   const totalBills = periodBills.length;
   const transferBillCount = periodBills.filter((b) => b.paymentMethod === 'transfer' || (b.paymentMethod === 'split' && b.transferAmount > 0)).length;
   const cashBillCount = periodBills.filter((b) => b.paymentMethod === 'cash' || (b.paymentMethod === 'split' && b.cashAmount > 0)).length;
@@ -115,8 +115,8 @@ export async function exportReportToPDF({
       <!-- Overview Quick Strip -->
       <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 16px; background-color: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 8px; padding: 10px 14px;">
         <div>
-          <div style="font-size: 10px; color: #64748b; font-weight: bold;">✂️ จำนวนหัวลูกค้า:</div>
-          <div style="font-size: 14px; font-weight: 900; font-family: monospace; color: #b45309;">${totalBills} หัว <span style="font-size: 10px; font-weight: normal; color: #64748b;">(ตัดผม ${totalHeads})</span></div>
+          <div style="font-size: 10px; color: #64748b; font-weight: bold;">✂️ จำนวนหัวตัดผม:</div>
+          <div style="font-size: 14px; font-weight: 900; font-family: monospace; color: #b45309;">${totalHeads} หัว <span style="font-size: 10px; font-weight: normal; color: #64748b;">(ทั้งหมด ${totalBills} บิล)</span></div>
         </div>
         <div>
           <div style="font-size: 10px; color: #64748b; font-weight: bold;">📱 ยอดโอน (${transferBillCount} บิล):</div>
@@ -271,7 +271,7 @@ export async function exportReportToPDF({
                 </td>
                 <td style="padding: 5px 6px; font-weight: 500;">${b.customerName}</td>
                 <td style="padding: 5px 6px;">${b.barberName}</td>
-                <td style="padding: 5px 6px; text-align: right; font-family: monospace;">${b.haircutFee > 0 ? `฿${b.haircutFee.toLocaleString()}` : '-'}</td>
+                <td style="padding: 5px 6px; text-align: right; font-family: monospace;">${b.haircutFee > 0 ? `฿${b.haircutFee.toLocaleString()}${(b.headCount && b.headCount > 1) ? ` (${b.headCount}หัว)` : ''}` : (b.totalProductsFee > 0 ? '<span style="color: #b45309; font-size: 8px;">สินค้า (0หัว)</span>' : '-')}</td>
                 <td style="padding: 5px 6px; text-align: right; font-family: monospace;">${b.chemicalFee > 0 ? `฿${b.chemicalFee.toLocaleString()}` : '-'}</td>
                 <td style="padding: 5px 6px; text-align: right; font-family: monospace;">${b.totalProductsFee > 0 ? `฿${b.totalProductsFee.toLocaleString()}` : '-'}</td>
                 <td style="padding: 5px 6px; text-align: right; font-family: monospace;">${b.tipFee > 0 ? `฿${b.tipFee.toLocaleString()}` : '-'}</td>

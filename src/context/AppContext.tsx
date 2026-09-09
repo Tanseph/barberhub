@@ -287,7 +287,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         const saved = localStorage.getItem(storageKeys.BILLS);
         if (saved) {
           const parsed: SaleBill[] = JSON.parse(saved);
-          return parsed.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0) || b.billNumber.localeCompare(a.billNumber));
+          const normalized = parsed.map((b) => ({
+            ...b,
+            headCount: b.haircutFee > 0 ? (typeof b.headCount === 'number' && b.headCount > 0 ? b.headCount : 1) : 0,
+          }));
+          return normalized.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0) || b.billNumber.localeCompare(a.billNumber));
         }
       } catch (e) {
         console.error(e);
@@ -740,9 +744,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         localStorage.setItem(keys.PRODUCTS, JSON.stringify(cloudProducts || []));
       },
       onBills: (cloudBills) => {
-        setBills(cloudBills || []);
+        const normalized = (cloudBills || []).map((b) => ({
+          ...b,
+          headCount: b.haircutFee > 0 ? (typeof b.headCount === 'number' && b.headCount > 0 ? b.headCount : 1) : 0,
+        }));
+        setBills(normalized);
         const keys = getTenantStorageKeys(currentShopId);
-        localStorage.setItem(keys.BILLS, JSON.stringify(cloudBills || []));
+        localStorage.setItem(keys.BILLS, JSON.stringify(normalized));
       },
       onExpenses: (cloudExpenses) => {
         setExpenses(cloudExpenses || []);
@@ -997,12 +1005,16 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       }
     }
 
+    const calculatedHeadCount = billData.haircutFee > 0
+      ? (typeof billData.headCount === 'number' && billData.headCount > 0 ? billData.headCount : 1)
+      : 0;
+
     const newBill: SaleBill = {
       ...billData,
       id: `bill-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
       billNumber,
       timestamp: billTimestamp,
-      headCount: billData.headCount && billData.headCount > 0 ? billData.headCount : 1,
+      headCount: calculatedHeadCount,
       commission: calculatedCommission,
     };
 
@@ -1053,7 +1065,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       });
     } catch {}
 
-    const headText = newBill.headCount > 1 ? ` (${newBill.headCount} หัว)` : '';
+    const headText = (newBill.headCount && newBill.headCount > 0)
+      ? ` (${newBill.headCount} หัว)`
+      : (newBill.haircutFee === 0 ? ' (ซื้อสินค้า • ไม่นับหัว 🛍️)' : '');
     showToast(
       'บันทึกยอดขายสำเร็จ 🎉',
       `บิล ${billNumber} ยอด ${settings.currencySymbol}${newBill.grossTotal.toLocaleString()}${headText}`,
@@ -1069,6 +1083,14 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       const next = prev.map((bill) => {
         if (bill.id === id) {
           const updated = { ...bill, ...updates };
+          // Ensure headCount is 0 if no haircut fee
+          if (updated.haircutFee === 0) {
+            updated.headCount = 0;
+          } else if (updates.headCount !== undefined) {
+            updated.headCount = Math.max(1, updates.headCount);
+          } else if (!updated.headCount || updated.headCount < 1) {
+            updated.headCount = 1;
+          }
           if (updates.dateStr || updates.timeStr) {
             const newDate = updates.dateStr || bill.dateStr;
             const newTime = updates.timeStr || bill.timeStr;

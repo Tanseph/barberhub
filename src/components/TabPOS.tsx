@@ -62,6 +62,7 @@ export const TabPOS: React.FC = () => {
   );
   const [customerName, setCustomerName] = useState<string>('');
   const [haircutFee, setHaircutFee] = useState<string>('');
+  const [headCount, setHeadCount] = useState<number>(1);
   const [chemicalFee, setChemicalFee] = useState<string>('');
   const [tipFee, setTipFee] = useState<string>('');
 
@@ -327,6 +328,7 @@ export const TabPOS: React.FC = () => {
       barberId: selectedBarberId,
       barberName: currentBarber?.nickname || 'ช่างประจำร้าน',
       customerName: cName,
+      headCount: numHaircut > 0 ? Math.max(1, headCount) : 0,
       haircutFee: numHaircut,
       chemicalFee: numChemical,
       tipFee: numTip,
@@ -350,6 +352,7 @@ export const TabPOS: React.FC = () => {
     // Reset Form
     setCustomerName('');
     setHaircutFee('');
+    setHeadCount(1);
     setChemicalFee('');
     setTipFee('');
     setSelectedProductDropdownId('');
@@ -524,14 +527,33 @@ export const TabPOS: React.FC = () => {
 
             {/* 2. FEES (HAIRCUT, CHEMICAL, TIP - 3 COMPACT COLUMNS) */}
             <div className={`${cardBg} rounded-2xl p-3.5 sm:p-4 border ${borderSubtle} shadow-sm space-y-2.5`}>
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between flex-wrap gap-2">
                 <h3 className={`text-xs font-bold uppercase tracking-wider ${mutedText} flex items-center gap-1.5`}>
                   <Receipt className="w-3.5 h-3.5 text-amber-500" />
                   <span>ค่าบริการ & ทิป</span>
                 </h3>
-                <span className="text-[10px] font-medium text-amber-600/90 dark:text-amber-400/90 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/20">
-                  ✨ ทิปให้ช่าง 100% (ไม่รวมรายได้ร้าน)
-                </span>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      sounds.playClick();
+                      setHaircutFee('');
+                      setHeadCount(0);
+                    }}
+                    className={`text-[10px] sm:text-[11px] font-bold px-2 py-0.5 rounded-lg border transition-all ${
+                      numHaircut === 0
+                        ? 'bg-amber-500/20 text-amber-500 border-amber-500/40'
+                        : isDark
+                        ? 'bg-zinc-800 text-zinc-300 border-zinc-700 hover:text-white'
+                        : 'bg-slate-100 text-slate-700 border-slate-300 hover:text-slate-900'
+                    }`}
+                  >
+                    🛒 ซื้อสินค้าอย่างเดียว (0 หัว)
+                  </button>
+                  <span className="text-[10px] font-medium text-amber-600/90 dark:text-amber-400/90 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/20 hidden sm:inline">
+                    ✨ ทิปช่าง 100%
+                  </span>
+                </div>
               </div>
 
               <div className="grid grid-cols-3 gap-2 sm:gap-2.5">
@@ -550,11 +572,51 @@ export const TabPOS: React.FC = () => {
                       type="number"
                       min="0"
                       value={haircutFee}
-                      onChange={(e) => setHaircutFee(e.target.value)}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setHaircutFee(val);
+                        if (parseFloat(val) > 0 && headCount === 0) {
+                          setHeadCount(1);
+                        } else if (!val || parseFloat(val) === 0) {
+                          setHeadCount(0);
+                        }
+                      }}
                       placeholder="0"
                       className="w-full px-2 py-1.5 bg-transparent font-mono font-bold text-sm sm:text-base text-emerald-600 dark:text-emerald-400 focus:outline-none"
                     />
                   </div>
+
+                  {/* Head count control */}
+                  {numHaircut > 0 ? (
+                    <div className="mt-1.5 pt-1 border-t border-dashed border-zinc-800/80 flex items-center justify-between text-[10px]">
+                      <span className="text-zinc-400 font-medium">จำนวน:</span>
+                      <div className="flex items-center gap-1">
+                        {[1, 2, 3].map((cnt) => (
+                          <button
+                            type="button"
+                            key={cnt}
+                            onClick={() => {
+                              sounds.playClick();
+                              setHeadCount(cnt);
+                            }}
+                            className={`px-1.5 py-0.5 rounded font-mono font-bold transition-all ${
+                              headCount === cnt
+                                ? 'bg-emerald-600 text-white shadow-xs'
+                                : isDark
+                                ? 'bg-zinc-800 text-zinc-400 hover:text-zinc-200'
+                                : 'bg-slate-200 text-slate-600 hover:text-slate-900'
+                            }`}
+                          >
+                            {cnt}หัว
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="mt-1.5 pt-1 border-t border-dashed border-zinc-800/80 text-[10px] text-amber-500 font-medium truncate">
+                      🛒 0 หัว (ไม่นับหัว)
+                    </div>
+                  )}
                 </div>
 
                 {/* Chemical Fee */}
@@ -1025,6 +1087,27 @@ export const TabPOS: React.FC = () => {
                   {numChemical > 0 && <span>• เคมี ฿{numChemical.toLocaleString()}</span>}
                   {totalProductsFee > 0 && <span>• สินค้า ฿{totalProductsFee.toLocaleString()}</span>}
                   {numTip > 0 && <span className="text-amber-500 font-bold">• ทิป ฿{numTip.toLocaleString()}</span>}
+                </div>
+
+                {/* Haircut head count vs Product only badge */}
+                <div className="pt-0.5">
+                  {numHaircut > 0 ? (
+                    <div className="flex items-center justify-between text-[11px] px-2.5 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 font-semibold">
+                      <span className="flex items-center gap-1">
+                        <Scissors className="w-3 h-3" />
+                        <span>บริการตัดผม</span>
+                      </span>
+                      <span className="font-mono font-bold">{Math.max(1, headCount)} หัว (นับสถิติ {Math.max(1, headCount)} หัว)</span>
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-between text-[11px] px-2.5 py-1 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400 font-semibold">
+                      <span className="flex items-center gap-1">
+                        <ShoppingBag className="w-3 h-3" />
+                        <span>{totalProductsFee > 0 ? 'ซื้อสินค้าอย่างเดียว' : 'ไม่มีบริการตัดผม'}</span>
+                      </span>
+                      <span className="font-bold font-mono">0 หัว (ไม่นับจำนวนหัว)</span>
+                    </div>
+                  )}
                 </div>
 
                 {/* Commission Transparency Box */}

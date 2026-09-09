@@ -199,7 +199,7 @@ export const TabDashboard: React.FC = () => {
   const todayBills = useMemo(() => {
     return bills.filter((b) => b.dateStr === defaultDateStr);
   }, [bills, defaultDateStr]);
-  const todayHeads = todayBills.length;
+  const todayHeads = todayBills.reduce((s, b) => s + (b.haircutFee > 0 ? (b.headCount && b.headCount > 0 ? b.headCount : 1) : 0), 0);
   const todayGross = todayBills.reduce((s, b) => s + b.grossTotal, 0);
 
   // Financial calculations for the selected period
@@ -219,8 +219,8 @@ export const TabDashboard: React.FC = () => {
   const totalTransfer = allPeriodBills.reduce((s, b) => s + b.transferAmount, 0);
   const totalCash = allPeriodBills.reduce((s, b) => s + b.cashAmount, 0);
 
-  const periodHeads = allPeriodBills.length;
-  const totalHaircuts = allPeriodBills.filter((b) => b.haircutFee > 0).length;
+  const periodHeads = allPeriodBills.reduce((s, b) => s + (b.haircutFee > 0 ? (b.headCount && b.headCount > 0 ? b.headCount : 1) : 0), 0);
+  const totalHaircuts = periodHeads;
   const totalChemicals = allPeriodBills.filter((b) => b.chemicalFee > 0).length;
   const periodTransferBills = allPeriodBills.filter((b) => b.paymentMethod === 'transfer' || (b.paymentMethod === 'split' && b.transferAmount > 0)).length;
   const periodCashBills = allPeriodBills.filter((b) => b.paymentMethod === 'cash' || (b.paymentMethod === 'split' && b.cashAmount > 0)).length;
@@ -340,7 +340,9 @@ export const TabDashboard: React.FC = () => {
         customerTotalPaid += b.grossTotal;
         barberPayroll += b.commission.barberTotalEarned;
         shopCommissionGross += b.commission.shopNetEarned;
-        if (b.haircutFee > 0) haircutCount++;
+        if (b.haircutFee > 0) {
+          haircutCount += (b.headCount && b.headCount > 0 ? b.headCount : 1);
+        }
         if (b.paymentMethod === 'transfer' || (b.paymentMethod === 'split' && b.transferAmount > 0)) {
           transferBillCount++;
         }
@@ -365,7 +367,7 @@ export const TabDashboard: React.FC = () => {
         dayName: day.dayName,
         dayFullDateTh: day.dayFullDateTh,
         billCount: dayBills.length,
-        headsCount: dayBills.length,
+        headsCount: haircutCount,
         haircutCount,
         transferBillCount,
         cashBillCount,
@@ -405,7 +407,7 @@ export const TabDashboard: React.FC = () => {
       const tipEarned = barberBills.reduce((sum, b) => sum + b.commission.barberTipEarned, 0);
       const totalEarned = haircutEarned + chemicalEarned + productEarned + tipEarned;
       const shopEarned = gross - totalEarned;
-      const headsCut = barberBills.filter((b) => b.haircutFee > 0).length;
+      const headsCut = barberBills.reduce((sum, b) => sum + (b.haircutFee > 0 ? (b.headCount && b.headCount > 0 ? b.headCount : 1) : 0), 0);
 
       return {
         barber,
@@ -1524,14 +1526,18 @@ export const TabDashboard: React.FC = () => {
                             {/* 3. รายการบริการ & ส่วนลด */}
                             <td className="py-3 px-3.5">
                               <div className="flex flex-wrap items-center gap-1.5 max-w-sm">
-                                {bill.haircutFee > 0 && (
+                                {bill.haircutFee > 0 ? (
                                   <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[11px] font-medium border ${
                                     isDark ? 'bg-zinc-800/80 border-zinc-700 text-zinc-200' : 'bg-slate-100 border-slate-200 text-slate-700'
                                   }`}>
-                                    <span>✂️ ตัดผม</span>
+                                    <span>✂️ ตัดผม{(bill.headCount && bill.headCount > 1) ? ` (${bill.headCount} หัว)` : ''}</span>
                                     <strong className="font-mono">{settings.currencySymbol}{bill.haircutFee.toLocaleString()}</strong>
                                   </span>
-                                )}
+                                ) : bill.totalProductsFee > 0 ? (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-bold bg-amber-500/10 text-amber-500 border border-amber-500/30">
+                                    <span>🛒 ซื้อสินค้า (0 หัว)</span>
+                                  </span>
+                                ) : null}
 
                                 {bill.hasHaircutDiscount10 && (
                                   <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-lg text-[10px] font-bold bg-emerald-500/15 text-emerald-500 border border-emerald-500/30">

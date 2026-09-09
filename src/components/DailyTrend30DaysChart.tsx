@@ -174,7 +174,9 @@ export const DailyTrend30DaysChart: React.FC<DailyTrend30DaysChartProps> = ({
         transferAmount += b.transferAmount;
         cashAmount += b.cashAmount;
         customerPayments += b.grossTotal;
-        if (b.haircutFee > 0) haircutCount++;
+        if (b.haircutFee > 0) {
+          haircutCount += (b.headCount && b.headCount > 0 ? b.headCount : 1);
+        }
       }
 
       // Shop Revenue = Services + Products - Discounts (strictly excluding tips)
