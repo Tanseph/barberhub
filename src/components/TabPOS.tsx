@@ -360,6 +360,11 @@ export const TabPOS: React.FC = () => {
     setNotes('');
     setActiveQueueId(undefined);
     clearPendingQueueToPos();
+    setPaymentMethod('transfer');
+    setCashAmount(0);
+    setTransferAmount(0);
+    setCashInputStr('');
+    setTransferInputStr('');
   };
 
   // Style helpers

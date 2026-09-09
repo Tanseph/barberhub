@@ -20,7 +20,6 @@ export const ModalEditBill: React.FC = () => {
 
   const [barberId, setBarberId] = useState('');
   const [customerName, setCustomerName] = useState('');
-  const [customerPhone, setCustomerPhone] = useState('');
   const [billDate, setBillDate] = useState('');
   const [billTime, setBillTime] = useState('');
   const [haircutFee, setHaircutFee] = useState<number>(0);
@@ -39,7 +38,6 @@ export const ModalEditBill: React.FC = () => {
     if (editingBill) {
       setBarberId(editingBill.barberId);
       setCustomerName(editingBill.customerName);
-      setCustomerPhone(editingBill.customerPhone || '');
       setBillDate(editingBill.dateStr || '');
       setBillTime(editingBill.timeStr || '');
       setHaircutFee(editingBill.haircutFee);
@@ -92,7 +90,7 @@ export const ModalEditBill: React.FC = () => {
       barberId,
       barberName: selectedBarber?.nickname || selectedBarber?.name || editingBill.barberName,
       customerName: customerName.trim(),
-      customerPhone: customerPhone.trim(),
+      customerPhone: editingBill.customerPhone || '',
       dateStr: billDate || editingBill.dateStr,
       timeStr: billTime || editingBill.timeStr,
       haircutFee: Number(haircutFee) || 0,
@@ -196,33 +194,19 @@ export const ModalEditBill: React.FC = () => {
             </div>
           </div>
 
-          {/* Customer Name & Phone */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className={`block text-xs font-semibold ${mutedText} mb-1.5`}>
-                ชื่อลูกค้า <span className="text-rose-500">*</span>
-              </label>
-              <input
-                type="text"
-                value={customerName}
-                onChange={(e) => setCustomerName(e.target.value)}
-                placeholder="กรุณาระบุชื่อลูกค้า"
-                required
-                className={inputClass}
-              />
-            </div>
-            <div>
-              <label className={`block text-xs font-semibold ${mutedText} mb-1.5`}>
-                เบอร์โทรศัพท์
-              </label>
-              <input
-                type="text"
-                value={customerPhone}
-                onChange={(e) => setCustomerPhone(e.target.value)}
-                placeholder="กรุณาระบุเบอร์โทรศัพท์ลูกค้า"
-                className={`${inputClass} font-mono`}
-              />
-            </div>
+          {/* Customer Name */}
+          <div>
+            <label className={`block text-xs font-semibold ${mutedText} mb-1.5`}>
+              ชื่อลูกค้า <span className="text-rose-500">*</span>
+            </label>
+            <input
+              type="text"
+              value={customerName}
+              onChange={(e) => setCustomerName(e.target.value)}
+              placeholder="กรุณาระบุชื่อลูกค้า"
+              required
+              className={inputClass}
+            />
           </div>
 
           {/* Services & Fees */}

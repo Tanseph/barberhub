@@ -11,8 +11,13 @@ import {
   UserX,
   Calendar,
   CheckCircle2,
+  Pencil,
+  Search,
+  Scissors,
+  X,
 } from 'lucide-react';
 import { sounds } from '../utils/sound';
+import { ModalEditQueue } from './ModalEditQueue';
 
 // Helper: Get local date YYYY-MM-DD (Real-time local date)
 export const getTodayDateStr = (): string => {
@@ -417,6 +422,9 @@ export const TabQueue: React.FC = () => {
   const [filterDate, setFilterDate] = useState<string>(() => getTodayDateStr());
   const [filterBarber, setFilterBarber] = useState<string>('all');
   const [filterStatus, setFilterStatus] = useState<string>('all');
+  const [searchQuery, setSearchQuery] = useState<string>('');
+  const [editingQueue, setEditingQueue] = useState<QueueBooking | null>(null);
+  const [isEditModalOpen, setIsEditModalOpen] = useState<boolean>(false);
 
   // Helper when start time changes
   const handleStartTimeChange = (start: string) => {
@@ -481,18 +489,39 @@ export const TabQueue: React.FC = () => {
 
   // Filtered Queues List for view
   const visibleQueues = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
     return queues
       .filter((q) => {
         if (subTab === 'leave') {
-          return q.isLeaveOrBlocked && q.date === filterDate;
+          return q.isLeaveOrBlocked && (filterDate === 'all' || q.date === filterDate);
         }
         const matchDate = filterDate === 'all' || q.date === filterDate;
         const matchBarber = filterBarber === 'all' || q.barberId === filterBarber;
         const matchStatus = filterStatus === 'all' || q.status === filterStatus;
-        return matchDate && matchBarber && matchStatus && !q.isLeaveOrBlocked;
+        const matchSearch =
+          !query ||
+          q.customerName.toLowerCase().includes(query) ||
+          (q.customerPhone && q.customerPhone.includes(query)) ||
+          q.queueNumber.toLowerCase().includes(query) ||
+          q.barberName.toLowerCase().includes(query);
+        return matchDate && matchBarber && matchStatus && matchSearch && !q.isLeaveOrBlocked;
       })
       .sort((a, b) => a.startTime.localeCompare(b.startTime));
-  }, [queues, subTab, filterDate, filterBarber, filterStatus]);
+  }, [queues, subTab, filterDate, filterBarber, filterStatus, searchQuery]);
+
+  // Statistics for selected date
+  const queueStats = useMemo(() => {
+    const dayQueues = queues.filter(
+      (q) => !q.isLeaveOrBlocked && (filterDate === 'all' || q.date === filterDate)
+    );
+    return {
+      total: dayQueues.length,
+      waiting: dayQueues.filter((q) => q.status === 'waiting').length,
+      inProgress: dayQueues.filter((q) => q.status === 'in_progress').length,
+      completed: dayQueues.filter((q) => q.status === 'completed').length,
+      cancelled: dayQueues.filter((q) => q.status === 'cancelled').length,
+    };
+  }, [queues, filterDate]);
 
   // Delete Queue confirmation
   const handleDeleteQueue = (queue: QueueBooking) => {
@@ -698,155 +727,204 @@ export const TabQueue: React.FC = () => {
           {/* RIGHT: Queue Timeline & List (7 Cols) */}
           <div className={`lg:col-span-7 xl:col-span-7 ${theme.bgCard} rounded-2xl p-5 sm:p-6 space-y-4`}>
             {/* Header & Filter Bar */}
-            <div className={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b ${borderSubtle}`}>
-              <div>
-                <h3 className={`text-base font-bold ${headingText} flex items-center gap-2`}>
-                  <Calendar className="w-4 h-4 text-amber-600" />
-                  <span>ตารางรายการจองคิว ({visibleQueues.length} คิว)</span>
-                </h3>
-                <p className={`text-xs ${mutedText} mt-0.5`}>
-                  วันที่: <span className={`font-bold text-amber-600`}>{formatThaiDateFull(filterDate)}</span>
-                </p>
+            <div className={`space-y-3 pb-3 border-b ${borderSubtle}`}>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <h3 className={`text-base font-bold ${headingText} flex items-center gap-2`}>
+                    <Calendar className="w-4 h-4 text-amber-600" />
+                    <span>ตารางรายการจองคิว ({visibleQueues.length} คิว)</span>
+                  </h3>
+                  <p className={`text-xs ${mutedText} mt-0.5`}>
+                    วันที่: <span className="font-bold text-amber-600">{formatThaiDateFull(filterDate)}</span>
+                  </p>
+                </div>
+
+                {/* Quick Status Stats Badges */}
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className={`px-2 py-0.5 rounded-md text-[11px] font-semibold border ${
+                    isDark ? 'bg-zinc-900 border-zinc-800 text-zinc-300' : 'bg-slate-100 border-slate-200 text-slate-700'
+                  }`}>
+                    ทั้งหมด: <strong>{queueStats.total}</strong>
+                  </span>
+                  <span className="px-2 py-0.5 rounded-md text-[11px] font-semibold border bg-amber-500/10 border-amber-500/20 text-amber-600">
+                    รอ: <strong>{queueStats.waiting}</strong>
+                  </span>
+                  <span className="px-2 py-0.5 rounded-md text-[11px] font-semibold border bg-sky-500/10 border-sky-500/20 text-sky-600">
+                    ตัดอยู่: <strong>{queueStats.inProgress}</strong>
+                  </span>
+                  <span className="px-2 py-0.5 rounded-md text-[11px] font-semibold border bg-emerald-500/10 border-emerald-500/20 text-emerald-600">
+                    เสร็จ: <strong>{queueStats.completed}</strong>
+                  </span>
+                </div>
               </div>
 
-              {/* Filter controls */}
-              <div className="flex flex-wrap items-center gap-2">
-                <div className="flex items-center gap-1">
+              {/* Filter controls & Search */}
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                {/* Date Controls */}
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        sounds.playClick();
+                        const current = filterDate === 'all' ? getTodayDateStr() : filterDate;
+                        setFilterDate(shiftDateStr(current, -1));
+                      }}
+                      title="วันก่อนหน้า"
+                      className={`px-2 py-1.5 rounded-lg border text-xs font-bold transition-all btn-tactile ${
+                        isDark ? 'bg-zinc-900 border-zinc-700 text-zinc-300 hover:text-white' : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                      }`}
+                    >
+                      ◀
+                    </button>
+
+                    <input
+                      type="date"
+                      value={filterDate === 'all' ? '' : filterDate}
+                      onChange={(e) => {
+                        if (e.target.value) {
+                          sounds.playClick();
+                          setFilterDate(e.target.value);
+                        }
+                      }}
+                      className={`px-2 py-1 rounded-lg border text-xs font-mono font-bold focus:outline-none ${
+                        isDark ? 'bg-zinc-950 border-zinc-700 text-zinc-200' : 'bg-slate-50 border-slate-200 text-slate-800'
+                      }`}
+                    />
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        sounds.playClick();
+                        const current = filterDate === 'all' ? getTodayDateStr() : filterDate;
+                        setFilterDate(shiftDateStr(current, 1));
+                      }}
+                      title="วันถัดไป"
+                      className={`px-2 py-1.5 rounded-lg border text-xs font-bold transition-all btn-tactile ${
+                        isDark ? 'bg-zinc-900 border-zinc-700 text-zinc-300 hover:text-white' : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                      }`}
+                    >
+                      ▶
+                    </button>
+                  </div>
+
                   <button
                     type="button"
                     onClick={() => {
                       sounds.playClick();
-                      const current = filterDate === 'all' ? getTodayDateStr() : filterDate;
-                      setFilterDate(shiftDateStr(current, -1));
+                      setFilterDate(getTodayDateStr());
                     }}
-                    title="วันก่อนหน้า"
-                    className={`px-2 py-1.5 rounded-lg border text-xs font-bold transition-all btn-tactile ${
-                      isDark ? 'bg-zinc-900 border-zinc-700 text-zinc-300 hover:text-white' : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                    className={`px-2.5 py-1.5 rounded-lg border text-xs font-bold btn-tactile ${
+                      filterDate === getTodayDateStr()
+                        ? isDark
+                          ? 'bg-amber-500 text-zinc-950 border-amber-500 shadow-xs'
+                          : 'bg-slate-900 text-white border-slate-900 shadow-xs'
+                        : isDark
+                        ? 'bg-zinc-900 border-zinc-700 text-zinc-300 hover:text-white'
+                        : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
                     }`}
                   >
-                    ◀
+                    📍 วันนี้
                   </button>
 
-                  <input
-                    type="date"
-                    value={filterDate === 'all' ? '' : filterDate}
-                    onChange={(e) => {
-                      if (e.target.value) {
-                        sounds.playClick();
-                        setFilterDate(e.target.value);
-                      }
+                  <button
+                    type="button"
+                    onClick={() => {
+                      sounds.playClick();
+                      setFilterDate(getTomorrowDateStr());
                     }}
-                    className={`px-2.5 py-1 rounded-lg border text-xs font-mono font-bold focus:outline-none ${
-                      isDark ? 'bg-zinc-950 border-zinc-700 text-zinc-200' : 'bg-slate-50 border-slate-200 text-slate-800'
+                    className={`px-2.5 py-1.5 rounded-lg border text-xs font-bold btn-tactile ${
+                      filterDate === getTomorrowDateStr()
+                        ? isDark
+                          ? 'bg-amber-500 text-zinc-950 border-amber-500 shadow-xs'
+                          : 'bg-slate-900 text-white border-slate-900 shadow-xs'
+                        : isDark
+                        ? 'bg-zinc-900 border-zinc-700 text-zinc-300 hover:text-white'
+                        : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
                     }`}
-                  />
+                  >
+                    🗓️ พรุ่งนี้
+                  </button>
 
                   <button
                     type="button"
                     onClick={() => {
                       sounds.playClick();
-                      const current = filterDate === 'all' ? getTodayDateStr() : filterDate;
-                      setFilterDate(shiftDateStr(current, 1));
+                      setFilterDate('all');
                     }}
-                    title="วันถัดไป"
-                    className={`px-2 py-1.5 rounded-lg border text-xs font-bold transition-all btn-tactile ${
-                      isDark ? 'bg-zinc-900 border-zinc-700 text-zinc-300 hover:text-white' : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                    className={`px-2 py-1.5 rounded-lg border text-xs font-bold btn-tactile ${
+                      filterDate === 'all'
+                        ? isDark
+                          ? 'bg-amber-500 text-zinc-950 border-amber-500 shadow-xs'
+                          : 'bg-slate-900 text-white border-slate-900 shadow-xs'
+                        : isDark
+                        ? 'bg-zinc-900 border-zinc-700 text-zinc-300 hover:text-white'
+                        : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
                     }`}
                   >
-                    ▶
+                    ทุกวัน
                   </button>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => {
-                    sounds.playClick();
-                    setFilterDate(getTodayDateStr());
-                  }}
-                  className={`px-2.5 py-1.5 rounded-lg border text-xs font-bold btn-tactile ${
-                    filterDate === getTodayDateStr()
-                      ? isDark
-                        ? 'bg-amber-500 text-zinc-950 border-amber-500 shadow-xs'
-                        : 'bg-slate-900 text-white border-slate-900 shadow-xs'
-                      : isDark
-                      ? 'bg-zinc-900 border-zinc-700 text-zinc-300 hover:text-white'
-                      : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
-                  }`}
-                >
-                  📍 วันนี้
-                </button>
+                {/* Dropdowns & Search */}
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <select
+                    value={filterBarber}
+                    onChange={(e) => setFilterBarber(e.target.value)}
+                    className={`px-2 py-1.5 rounded-lg border text-xs focus:outline-none ${
+                      isDark ? 'bg-zinc-950 border-zinc-700 text-zinc-200' : 'bg-slate-50 border-slate-200 text-slate-800'
+                    }`}
+                  >
+                    <option value="all">ช่างทั้งหมด</option>
+                    {barbers.map((b) => (
+                      <option key={b.id} value={b.id}>
+                        {b.nickname}
+                      </option>
+                    ))}
+                  </select>
 
-                <button
-                  type="button"
-                  onClick={() => {
-                    sounds.playClick();
-                    setFilterDate(getTomorrowDateStr());
-                  }}
-                  className={`px-2.5 py-1.5 rounded-lg border text-xs font-bold btn-tactile ${
-                    filterDate === getTomorrowDateStr()
-                      ? isDark
-                        ? 'bg-amber-500 text-zinc-950 border-amber-500 shadow-xs'
-                        : 'bg-slate-900 text-white border-slate-900 shadow-xs'
-                      : isDark
-                      ? 'bg-zinc-900 border-zinc-700 text-zinc-300 hover:text-white'
-                      : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
-                  }`}
-                >
-                  🗓️ พรุ่งนี้
-                </button>
+                  <select
+                    value={filterStatus}
+                    onChange={(e) => setFilterStatus(e.target.value)}
+                    className={`px-2 py-1.5 rounded-lg border text-xs focus:outline-none ${
+                      isDark ? 'bg-zinc-950 border-zinc-700 text-zinc-200' : 'bg-slate-50 border-slate-200 text-slate-800'
+                    }`}
+                  >
+                    <option value="all">ทุกสถานะ</option>
+                    <option value="waiting">🕒 รอตัด</option>
+                    <option value="in_progress">✂️ กำลังตัด</option>
+                    <option value="completed">✅ เสร็จสิ้น</option>
+                    <option value="cancelled">❌ ยกเลิก</option>
+                  </select>
 
-                <button
-                  type="button"
-                  onClick={() => {
-                    sounds.playClick();
-                    setFilterDate('all');
-                  }}
-                  className={`px-2.5 py-1.5 rounded-lg border text-xs font-bold btn-tactile ${
-                    filterDate === 'all'
-                      ? isDark
-                        ? 'bg-amber-500 text-zinc-950 border-amber-500 shadow-xs'
-                        : 'bg-slate-900 text-white border-slate-900 shadow-xs'
-                      : isDark
-                      ? 'bg-zinc-900 border-zinc-700 text-zinc-300 hover:text-white'
-                      : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
-                  }`}
-                >
-                  ทุกวัน
-                </button>
-
-                <select
-                  value={filterBarber}
-                  onChange={(e) => setFilterBarber(e.target.value)}
-                  className={`px-2.5 py-1.5 rounded-lg border text-xs focus:outline-none ${
-                    isDark ? 'bg-zinc-950 border-zinc-700 text-zinc-200' : 'bg-slate-50 border-slate-200 text-slate-800'
-                  }`}
-                >
-                  <option value="all">ช่างทั้งหมด</option>
-                  {barbers.map((b) => (
-                    <option key={b.id} value={b.id}>
-                      {b.nickname}
-                    </option>
-                  ))}
-                </select>
-
-                <select
-                  value={filterStatus}
-                  onChange={(e) => setFilterStatus(e.target.value)}
-                  className={`px-2.5 py-1.5 rounded-lg border text-xs focus:outline-none ${
-                    isDark ? 'bg-zinc-950 border-zinc-700 text-zinc-200' : 'bg-slate-50 border-slate-200 text-slate-800'
-                  }`}
-                >
-                  <option value="all">ทุกสถานะ</option>
-                  <option value="waiting">🕒 รอตัด</option>
-                  <option value="in_progress">✂️ กำลังตัด</option>
-                  <option value="completed">✅ เสร็จสิ้น</option>
-                  <option value="cancelled">❌ ยกเลิก</option>
-                </select>
+                  {/* Search input */}
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      placeholder="ค้นหาชื่อ/เบอร์..."
+                      className={`w-32 sm:w-36 pl-7 pr-6 py-1.5 rounded-lg border text-xs focus:outline-none ${
+                        isDark ? 'bg-zinc-950 border-zinc-700 text-zinc-200' : 'bg-slate-50 border-slate-200 text-slate-800'
+                      }`}
+                    />
+                    <Search className="w-3 h-3 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                    {searchQuery && (
+                      <button
+                        type="button"
+                        onClick={() => setSearchQuery('')}
+                        className="absolute right-1.5 top-1/2 -translate-y-1/2 p-0.5 text-slate-400 hover:text-slate-600"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
 
-            {/* Queue Cards List */}
-            <div className="space-y-3 max-h-[70vh] overflow-y-auto pr-1">
+            {/* Compact Queue Cards List */}
+            <div className="space-y-2 max-h-[72vh] overflow-y-auto pr-1">
               {visibleQueues.length === 0 ? (
                 <div className={`py-12 text-center rounded-xl border ${
                   isDark ? 'text-zinc-500 bg-zinc-950/40 border-zinc-800/60' : 'text-slate-400 bg-slate-50 border-slate-200'
@@ -865,51 +943,71 @@ export const TabQueue: React.FC = () => {
                   return (
                     <div
                       key={q.id}
-                      className={`p-4 rounded-xl border transition-all ${
+                      className={`p-2.5 sm:p-3 rounded-xl border transition-all duration-150 ${
                         isInProgress
                           ? isDark
-                            ? 'border-amber-500/60 bg-amber-500/10 shadow-md'
-                            : 'border-slate-900 bg-slate-50 shadow-sm'
+                            ? 'border-l-4 border-l-sky-500 border-zinc-800 bg-sky-500/10 shadow-xs'
+                            : 'border-l-4 border-l-sky-500 border-slate-200 bg-sky-50/80 shadow-xs'
+                          : isWaiting
+                          ? isDark
+                            ? 'border-l-4 border-l-amber-500 border-zinc-800 bg-zinc-950/70 hover:border-zinc-700'
+                            : 'border-l-4 border-l-amber-500 border-slate-200 bg-white hover:border-slate-300 shadow-2xs'
                           : isCompleted
                           ? isDark
-                            ? 'border-emerald-500/30 bg-emerald-500/5 opacity-80'
-                            : 'border-emerald-200 bg-emerald-50/50 opacity-90'
-                          : isCancelled
-                          ? isDark
-                            ? 'border-zinc-800 bg-zinc-950/40 opacity-50'
-                            : 'border-slate-200 bg-slate-50 opacity-50'
+                            ? 'border-l-4 border-l-emerald-500/60 border-zinc-800/80 bg-zinc-950/40 opacity-75'
+                            : 'border-l-4 border-l-emerald-500/60 border-slate-200 bg-slate-50/70 opacity-80'
                           : isDark
-                          ? 'border-zinc-800 bg-zinc-950/80 hover:border-zinc-700'
-                          : 'border-slate-200 bg-white hover:border-slate-300 shadow-2xs'
+                          ? 'border-l-4 border-l-rose-500/60 border-zinc-800/60 bg-zinc-950/30 opacity-60'
+                          : 'border-l-4 border-l-rose-500/60 border-slate-200 bg-slate-50/50 opacity-60'
                       }`}
                     >
-                      <div className={`flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2.5 border-b ${
-                        isDark ? 'border-zinc-800/80' : 'border-slate-100'
-                      }`}>
-                        {/* Time & Queue Number (Thai 24H Format) */}
-                        <div className="flex items-center gap-3">
-                          <span className={`px-2.5 py-1 rounded-lg font-mono font-bold text-xs ${
-                            isDark ? 'bg-zinc-900 border border-zinc-700 text-amber-400' : 'bg-slate-900 text-white'
+                      {/* Top Row: Q-Number, Time Range, Customer, Phone, Barber, Status */}
+                      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5">
+                        {/* Left Group */}
+                        <div className="flex items-center gap-2 flex-wrap min-w-0">
+                          <span className={`px-2 py-0.5 rounded-md font-mono font-bold text-xs shrink-0 ${
+                            isDark ? 'bg-zinc-800 text-amber-400 border border-zinc-700' : 'bg-slate-900 text-white'
                           }`}>
                             {q.queueNumber}
                           </span>
-                          <span className={`font-mono text-sm font-bold ${headingText} flex items-center gap-1.5`}>
-                            <Clock className={`w-3.5 h-3.5 ${mutedText}`} />
+
+                          <span className="font-mono text-xs font-bold text-amber-600 dark:text-amber-400 flex items-center gap-1 shrink-0">
+                            <Clock className="w-3 h-3 text-slate-400 shrink-0" />
                             <span>{formatThaiTimeRange(q.startTime, q.endTime)}</span>
                           </span>
+
+                          <span className={`font-bold text-xs sm:text-sm ${headingText} truncate max-w-[140px] sm:max-w-[200px]`}>
+                            {q.customerName}
+                          </span>
+
+                          {q.customerPhone && q.customerPhone !== '-' && (
+                            <span className={`text-[11px] font-mono ${mutedText} flex items-center gap-0.5 px-1.5 py-0.5 rounded ${
+                              isDark ? 'bg-zinc-900' : 'bg-slate-100'
+                            }`}>
+                              <Phone className="w-2.5 h-2.5 text-slate-400" />
+                              <span>{q.customerPhone}</span>
+                            </span>
+                          )}
                         </div>
 
-                        {/* Status Badge */}
-                        <div className="flex items-center gap-1.5">
+                        {/* Right Group: Barber & Status */}
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-md border flex items-center gap-1 ${
+                            isDark ? 'bg-zinc-900 border-zinc-700 text-zinc-300' : 'bg-slate-100 border-slate-200 text-slate-700'
+                          }`}>
+                            <Scissors className="w-2.5 h-2.5 text-amber-500" />
+                            <span>{q.barberName}</span>
+                          </span>
+
                           <span
-                            className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${
+                            className={`px-2 py-0.5 rounded-full text-[11px] font-bold ${
                               isWaiting
-                                ? 'bg-amber-500/15 text-amber-600 border border-amber-500/25'
+                                ? 'bg-amber-500/15 text-amber-600 border border-amber-500/30'
                                 : isInProgress
-                                ? 'bg-sky-500/15 text-sky-600 border border-sky-500/25 animate-pulse'
+                                ? 'bg-sky-500/15 text-sky-600 border border-sky-500/30 animate-pulse'
                                 : isCompleted
-                                ? 'bg-emerald-500/15 text-emerald-600 border border-emerald-500/25'
-                                : 'bg-rose-500/15 text-rose-600 border border-rose-500/25'
+                                ? 'bg-emerald-500/15 text-emerald-600 border border-emerald-500/30'
+                                : 'bg-rose-500/15 text-rose-600 border border-rose-500/30'
                             }`}
                           >
                             {isWaiting && '🕒 รอตัด'}
@@ -920,87 +1018,91 @@ export const TabQueue: React.FC = () => {
                         </div>
                       </div>
 
-                      {/* Details */}
-                      <div className="py-2.5 grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
-                        <div>
-                          <p className={`font-bold text-sm ${headingText}`}>{q.customerName}</p>
-                          {q.customerPhone && q.customerPhone !== '-' && (
-                            <p className={`${mutedText} font-mono mt-0.5 flex items-center gap-1`}>
-                              <Phone className="w-3 h-3 text-slate-400" />
-                              <span>{q.customerPhone}</span>
-                            </p>
-                          )}
-                        </div>
-                        <div>
-                          <p className={isDark ? 'text-zinc-300' : 'text-slate-700'}>
-                            ช่าง: <strong className="text-amber-600">{q.barberName}</strong>
-                          </p>
-                          <p className={`${mutedText} mt-0.5 truncate`}>
-                            บริการ: {q.serviceType}
-                          </p>
-                        </div>
-                      </div>
-
-                      {q.notes && (
-                        <div className={`text-[11px] italic px-2.5 py-1 rounded mb-2.5 ${
-                          isDark ? 'text-zinc-400 bg-zinc-900/60' : 'text-slate-500 bg-slate-50'
-                        }`}>
-                          หมายเหตุ: {q.notes}
-                        </div>
-                      )}
-
-                      {/* Action Bar */}
-                      <div className={`pt-2 border-t flex flex-wrap items-center justify-between gap-2 ${
+                      {/* Bottom Row: Service Info, Notes & Compact Action Buttons */}
+                      <div className={`mt-2 pt-2 border-t flex flex-wrap items-center justify-between gap-2 text-xs ${
                         isDark ? 'border-zinc-800/80' : 'border-slate-100'
                       }`}>
-                        {/* Status Change Buttons */}
-                        <div className="flex items-center gap-1">
+                        {/* Service & Notes */}
+                        <div className="flex items-center gap-2 text-[11px] min-w-0 flex-1">
+                          <span className={`${mutedText} truncate`}>
+                            {q.serviceType}
+                          </span>
+                          {q.notes && (
+                            <span
+                              className={`italic truncate max-w-[200px] px-1.5 py-0.5 rounded ${
+                                isDark ? 'text-amber-400/90 bg-amber-500/10' : 'text-amber-700 bg-amber-50'
+                              }`}
+                              title={q.notes}
+                            >
+                              📝 {q.notes}
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Actions Group */}
+                        <div className="flex items-center gap-1.5 shrink-0">
                           {isWaiting && (
                             <button
+                              type="button"
                               onClick={() => changeQueueStatus(q.id, 'in_progress')}
-                              className="px-2.5 py-1 rounded-lg bg-sky-500/15 hover:bg-sky-500 hover:text-white text-sky-600 text-xs font-semibold transition-colors btn-tactile"
+                              className="px-2 py-1 rounded-lg bg-sky-500/15 hover:bg-sky-500 hover:text-white text-sky-600 text-[11px] font-bold transition-colors btn-tactile"
+                              title="เริ่มตัดผม"
                             >
                               เริ่มตัด ✂️
                             </button>
                           )}
                           {isInProgress && (
                             <button
+                              type="button"
                               onClick={() => changeQueueStatus(q.id, 'completed')}
-                              className="px-2.5 py-1 rounded-lg bg-emerald-500/15 hover:bg-emerald-500 hover:text-white text-emerald-600 text-xs font-semibold transition-colors btn-tactile"
+                              className="px-2 py-1 rounded-lg bg-emerald-500/15 hover:bg-emerald-500 hover:text-white text-emerald-600 text-[11px] font-bold transition-colors btn-tactile"
+                              title="ตัดผมเสร็จสิ้น"
                             >
                               เสร็จแล้ว ✅
                             </button>
                           )}
-                          {!isCancelled && !isCompleted && (
-                            <button
-                              onClick={() => changeQueueStatus(q.id, 'cancelled')}
-                              className={`px-2 py-1 rounded-lg text-xs transition-colors btn-tactile ${
-                                isDark ? 'bg-zinc-800 hover:bg-rose-500/20 text-zinc-400 hover:text-rose-400' : 'bg-slate-100 hover:bg-rose-100 text-slate-600 hover:text-rose-600'
-                              }`}
-                            >
-                              ยกเลิก
-                            </button>
-                          )}
-                        </div>
 
-                        {/* Open in POS Button & Delete */}
-                        <div className="flex items-center gap-2">
+                          {/* Open in POS Button */}
                           <button
+                            type="button"
                             onClick={() => startPosFromQueue(q)}
-                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs shadow-xs transition-all btn-tactile"
+                            className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-[11px] shadow-2xs transition-all btn-tactile"
+                            title="เปิดบิลคิดเงินที่ POS"
                           >
-                            <Receipt className="w-3.5 h-3.5" />
-                            <span>เปิดบิลคิดเงิน POS 💵</span>
+                            <Receipt className="w-3 h-3" />
+                            <span>คิดเงิน POS</span>
                           </button>
 
+                          {/* Edit Queue Button */}
                           <button
-                            onClick={() => handleDeleteQueue(q)}
-                            className={`p-1.5 rounded-lg transition-colors btn-tactile ${
-                              isDark ? 'bg-zinc-800 hover:bg-rose-500/20 text-zinc-400 hover:text-rose-400' : 'bg-slate-100 hover:bg-rose-100 text-slate-600 hover:text-rose-600'
+                            type="button"
+                            onClick={() => {
+                              sounds.playClick();
+                              setEditingQueue(q);
+                              setIsEditModalOpen(true);
+                            }}
+                            className={`p-1.5 rounded-lg border text-[11px] transition-colors btn-tactile ${
+                              isDark
+                                ? 'bg-zinc-800 hover:bg-zinc-700 border-zinc-700 text-zinc-300 hover:text-white'
+                                : 'bg-white hover:bg-slate-100 border-slate-200 text-slate-700 shadow-2xs'
                             }`}
-                            title="ลบคิว"
+                            title="แก้ไขข้อมูลคิวนี้"
                           >
-                            <Trash2 className="w-3.5 h-3.5" />
+                            <Pencil className="w-3 h-3" />
+                          </button>
+
+                          {/* Delete Queue Button */}
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteQueue(q)}
+                            className={`p-1.5 rounded-lg border text-[11px] transition-colors btn-tactile ${
+                              isDark
+                                ? 'bg-zinc-800 hover:bg-rose-500/20 border-zinc-700 text-zinc-400 hover:text-rose-400'
+                                : 'bg-white hover:bg-rose-50 border-slate-200 text-slate-400 hover:text-rose-600 shadow-2xs'
+                            }`}
+                            title="ยกเลิก/ลบคิว"
+                          >
+                            <Trash2 className="w-3 h-3" />
                           </button>
                         </div>
                       </div>
@@ -1242,6 +1344,16 @@ export const TabQueue: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Modal for editing a queue booking */}
+      <ModalEditQueue
+        queue={editingQueue}
+        isOpen={isEditModalOpen}
+        onClose={() => {
+          setIsEditModalOpen(false);
+          setEditingQueue(null);
+        }}
+      />
     </div>
   );
 };
