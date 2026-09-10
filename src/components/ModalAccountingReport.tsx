@@ -90,6 +90,37 @@ export const ModalAccountingReport: React.FC<ModalAccountingReportProps> = ({
   const transferBillCount = periodBills.filter((b) => b.paymentMethod === 'transfer' || (b.paymentMethod === 'split' && b.transferAmount > 0)).length;
   const cashBillCount = periodBills.filter((b) => b.paymentMethod === 'cash' || (b.paymentMethod === 'split' && b.cashAmount > 0)).length;
 
+  const hasAddress = Boolean(settings.shopAddress && settings.shopAddress.trim() !== '' && !settings.shopAddress.includes('ทองหล่อ'));
+  const hasPhone = Boolean(settings.shopPhone && settings.shopPhone.trim() !== '' && !settings.shopPhone.includes('02-888-9999'));
+  const hasPromptPay = Boolean(settings.shopPromptPay && settings.shopPromptPay.trim() !== '' && settings.shopPromptPay !== '0891234567');
+
+  const cashExpenses = periodExpenses.filter((e) => e.paymentMethod === 'cash').reduce((s, e) => s + e.amount, 0);
+  const transferExpenses = periodExpenses.filter((e) => e.paymentMethod === 'transfer').reduce((s, e) => s + e.amount, 0);
+  const netCashInDrawer = totalCash - cashExpenses;
+
+  const expensesByCategory = periodExpenses.reduce((acc, exp) => {
+    const cat = exp.category || 'เบ็ดเตล็ด';
+    if (!acc[cat]) {
+      acc[cat] = { count: 0, total: 0 };
+    }
+    acc[cat].count += 1;
+    acc[cat].total += exp.amount;
+    return acc;
+  }, {} as Record<string, { count: number; total: number }>);
+
+  const expenseCategoryList = (Object.entries(expensesByCategory) as [string, { count: number; total: number }][]).sort((a, b) => b[1].total - a[1].total);
+
+  const totalCustomerInflow = totalCash + totalTransfer;
+  const transferInflowPct = totalCustomerInflow > 0 ? ((totalTransfer / totalCustomerInflow) * 100).toFixed(1) : '0';
+  const cashInflowPct = totalCustomerInflow > 0 ? ((totalCash / totalCustomerInflow) * 100).toFixed(1) : '0';
+  const haircutRevPct = totalShopGrossRevenue > 0 ? ((totalHaircutRev / totalShopGrossRevenue) * 100).toFixed(1) : '0';
+  const chemRevPct = totalShopGrossRevenue > 0 ? ((totalChemRev / totalShopGrossRevenue) * 100).toFixed(1) : '0';
+  const prodRevPct = totalShopGrossRevenue > 0 ? ((totalProdRev / totalShopGrossRevenue) * 100).toFixed(1) : '0';
+
+  const avgTicket = totalBills > 0 ? Math.round(totalShopNetRevenue / totalBills) : 0;
+  const avgHaircutPrice = totalHeads > 0 ? Math.round(totalHaircutRev / totalHeads) : 0;
+  const avgBarberEarned = barberSummaries.length > 0 ? Math.round(totalBarberPayout / barberSummaries.length) : 0;
+
   const handlePrint = () => {
     sounds.playClick();
     window.print();
@@ -128,6 +159,82 @@ export const ModalAccountingReport: React.FC<ModalAccountingReportProps> = ({
 
   const handleExportCSV = () => {
     sounds.playClick();
+
+    if (viewMode === 'monthly') {
+      const summaryRows = [
+        ['รายงานสรุปบัญชีประจำงวด (Monthly Accounting Summary)'],
+        [`รอบบิล: ${billingCycleInfo.monthOnlyLabel}`],
+        [`ร้าน: ${settings.shopName}`],
+        [`วันที่พิมพ์: ${new Date().toLocaleDateString('th-TH')}`],
+        [],
+        ['1. สรุปรายรับจากการดำเนินงาน (Revenue Breakdown)'],
+        ['หมวดหมู่', 'จำนวน', 'ยอดเงิน (บาท)', 'สัดส่วน (%)'],
+        ['ค่าบริการตัดผม', `${totalHeads} หัว`, totalHaircutRev, `${haircutRevPct}%`],
+        ['ค่าบริการเคมี / ทำสี', '-', totalChemRev, `${chemRevPct}%`],
+        ['จำหน่ายสินค้า', '-', totalProdRev, `${prodRevPct}%`],
+        ['รวมยอดขายก่อนหักส่วนลด', `${totalBills} บิล`, totalShopGrossRevenue, '100%'],
+        ['หัก ส่วนลดที่ร้านออกให้', '-', -totalDiscounts, ''],
+        ['รายได้ร้านสุทธิจากการดำเนินงาน', '-', totalShopNetRevenue, ''],
+        ['* ทิปช่าง (ส่งมอบช่าง 100%)', '-', totalTipRev, 'เงินรับฝากส่งต่อช่าง'],
+        [],
+        ['2. สรุปช่องทางรับเงินและการกระทบยอดเงินสด (Inflow & Cash Reconciliation)'],
+        ['ช่องทาง', 'จำนวนบิล', 'ยอดเงิน (บาท)', 'สัดส่วน (%)'],
+        ['เงินโอนเข้าบัญชี', `${transferBillCount} บิล`, totalTransfer, `${transferInflowPct}%`],
+        ['เงินสดรับเข้าลิ้นชัก', `${cashBillCount} บิล`, totalCash, `${cashInflowPct}%`],
+        ['รวมยอดรับชำระทั้งหมด', `${totalBills} บิล`, totalCustomerInflow, '100%'],
+        ['หัก รายจ่ายร้านที่จ่ายด้วยเงินสด', `${periodExpenses.filter((e) => e.paymentMethod === 'cash').length} รายการ`, -cashExpenses, ''],
+        ['ยอดเงินสดคงเหลือสุทธิในลิ้นชัก', '-', netCashInDrawer, ''],
+        [],
+        ['3. สรุปส่วนแบ่งช่างรายบุคคล (Barber Commission Ledger)'],
+        ['ชื่อช่าง', 'จำนวนหัว', 'ตัดผม', 'เคมี', 'สินค้า', 'ทิป (100%)', 'รวมเงินที่จ่ายช่าง'],
+        ...barberSummaries.map((b) => [
+          `"${b.barber.nickname}"`,
+          b.headsCut,
+          b.haircutEarned,
+          b.chemicalEarned,
+          b.productEarned,
+          b.tipEarned,
+          b.totalEarned,
+        ]),
+        ['รวมจ่ายส่วนแบ่งช่างทั้งหมด', totalHeads, totalHaircutComm, totalChemComm, totalProdComm, totalTipPayout, totalBarberPayout],
+        [],
+        ['4. สรุปค่าใช้จ่ายร้านค้าแยกตามหมวดหมู่ (Expenses by Category)'],
+        ['หมวดหมู่', 'จำนวนรายการ', 'ยอดรวม (บาท)', 'สัดส่วน (%)'],
+        ...expenseCategoryList.map(([cat, val]) => [
+          `"${cat}"`,
+          `${val.count} รายการ`,
+          val.total,
+          `${totalShopExpenses > 0 ? ((val.total / totalShopExpenses) * 100).toFixed(1) : 0}%`,
+        ]),
+        ['รวมค่าใช้จ่ายร้านค้าทั้งหมด', `${periodExpenses.length} รายการ`, totalShopExpenses, '100%'],
+        [],
+        ['5. สรุปผลการดำเนินงานสุทธิ (Bottom Line Financial Summary)'],
+        ['รายการ', 'ยอดเงิน (บาท)'],
+        ['ส่วนแบ่งกำไรขั้นต้นของร้าน', shopGrossProfit],
+        ['หัก ค่าใช้จ่ายดำเนินงานร้านค้า', -totalShopExpenses],
+        ['กำไรสุทธิคงเหลือของร้าน (Net Profit)', finalBottomLineProfit],
+        ['อัตรากำไรสุทธิ (Net Margin %)', `${shopMarginPercent}%`],
+        [],
+        ['6. ดัชนีชี้วัดทางธุรกิจ (Monthly KPIs)'],
+        ['ตัวชี้วัด', 'ค่าที่ได้'],
+        ['ยอดขายเฉลี่ยต่อบิล (Avg Ticket)', `${avgTicket} บาท`],
+        ['ราคาตัดผมเฉลี่ยต่อหัว', `${avgHaircutPrice} บาท`],
+        ['รายได้เฉลี่ยต่อช่าง', `${avgBarberEarned} บาท`],
+      ];
+
+      const csvContent = '\uFEFF' + summaryRows.map((e) => e.join(',')).join('\n');
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.setAttribute('href', url);
+      link.setAttribute('download', `Monthly_Accounting_Report_${selectedMonth}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      showToast('ดาวน์โหลด CSV สำเร็จ 📑', 'ส่งออกข้อมูลสำหรับทำบัญชีรายเดือนเรียบร้อย', 'success', '📊');
+      return;
+    }
+
     const headers = [
       'เลขที่บิล',
       'วันที่',
@@ -181,7 +288,7 @@ export const ModalAccountingReport: React.FC<ModalAccountingReportProps> = ({
     link.setAttribute('href', url);
     link.setAttribute(
       'download',
-      `Accounting_Report_${viewMode === 'daily' ? selectedDate : selectedMonth}.csv`
+      `Accounting_Report_${selectedDate}.csv`
     );
     document.body.appendChild(link);
     link.click();
@@ -192,7 +299,7 @@ export const ModalAccountingReport: React.FC<ModalAccountingReportProps> = ({
   const reportPeriodTitle =
     viewMode === 'daily'
       ? `ประจำวันที่ ${selectedDate}`
-      : `รอบบิลเดือน ${billingCycleInfo.fullLabel} (${billingCycleInfo.cutoffDescription})`;
+      : billingCycleInfo.monthOnlyLabel;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/70 backdrop-blur-xs overflow-y-auto print:p-0 print:bg-white print:static">
@@ -269,11 +376,13 @@ export const ModalAccountingReport: React.FC<ModalAccountingReportProps> = ({
           <div className="border-b pb-5 flex flex-col sm:flex-row justify-between items-start sm:items-end gap-4 border-slate-200 dark:border-zinc-800 print:border-black">
             <div>
               <div className="text-xl font-black tracking-tight">{settings.shopName}</div>
-              <div className="text-xs text-slate-500 dark:text-zinc-400 print:text-gray-600 mt-1 space-y-0.5 font-mono">
-                {settings.shopAddress && <div>ที่อยู่: {settings.shopAddress}</div>}
-                {settings.shopPhone && <div>โทรศัพท์: {settings.shopPhone}</div>}
-                {settings.shopPromptPay && <div>พร้อมเพย์: {settings.shopPromptPay}</div>}
-              </div>
+              {(hasAddress || hasPhone || hasPromptPay) && (
+                <div className="text-xs text-slate-500 dark:text-zinc-400 print:text-gray-600 mt-1 space-y-0.5 font-mono">
+                  {hasAddress && <div>ที่อยู่: {settings.shopAddress}</div>}
+                  {hasPhone && <div>โทรศัพท์: {settings.shopPhone}</div>}
+                  {hasPromptPay && <div>พร้อมเพย์: {settings.shopPromptPay}</div>}
+                </div>
+              )}
             </div>
             <div className="text-left sm:text-right space-y-1">
               <span className="inline-block px-3 py-1 bg-amber-500/10 dark:bg-amber-500/20 text-amber-700 dark:text-amber-400 text-xs font-bold rounded-lg uppercase tracking-wider print:border print:border-black">
@@ -483,60 +592,215 @@ export const ModalAccountingReport: React.FC<ModalAccountingReportProps> = ({
             </div>
           </div>
 
-          {/* List of bills during this period */}
-          <div>
-            <h4 className="text-sm font-bold mb-2.5 flex items-center justify-between">
-              <span>รายการบันทึกบิลประจำงวด ({periodBills.length} รายการ)</span>
-              <span className="text-xs font-normal text-slate-500 font-mono">
-                เงินสด: {settings.currencySymbol}{totalCash.toLocaleString()} | เงินโอน: {settings.currencySymbol}{totalTransfer.toLocaleString()}
-              </span>
-            </h4>
-            <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-zinc-800 print:border-black">
-              <table className="w-full text-left text-xs">
-                <thead className="bg-slate-100 dark:bg-zinc-950 border-b border-slate-200 dark:border-zinc-800 font-semibold print:bg-gray-100 print:border-black">
-                  <tr>
-                    <th className="py-2 px-3">เลขที่บิล / เวลา</th>
-                    <th className="py-2 px-3">ลูกค้า</th>
-                    <th className="py-2 px-3">ช่าง</th>
-                    <th className="py-2 px-3 text-right">ตัดผม</th>
-                    <th className="py-2 px-3 text-right">เคมี</th>
-                    <th className="py-2 px-3 text-right">สินค้า</th>
-                    <th className="py-2 px-3 text-right">ทิป</th>
-                    <th className="py-2 px-3 text-right font-bold">ยอดรวม</th>
-                    <th className="py-2 px-3 text-center">ช่องทางชำระ</th>
-                    <th className="py-2 px-3 text-right text-emerald-600">จ่ายช่าง</th>
-                    <th className="py-2 px-3 text-right text-amber-600">ร้านได้รับ</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-200 dark:divide-zinc-800 print:divide-black">
-                  {periodBills.map((b) => (
-                    <tr key={b.id}>
-                      <td className="py-2 px-3 font-mono">
-                        <span className="font-bold">{b.billNumber}</span>
-                        <span className="text-[10px] text-slate-400 dark:text-zinc-500 block">{b.dateStr} {b.timeStr} น.</span>
-                      </td>
-                      <td className="py-2 px-3 font-medium">{b.customerName}</td>
-                      <td className="py-2 px-3">{b.barberName}</td>
-                      <td className="py-2 px-3 text-right font-mono">{b.haircutFee > 0 ? `${settings.currencySymbol}${b.haircutFee.toLocaleString()}` : '-'}</td>
-                      <td className="py-2 px-3 text-right font-mono">{b.chemicalFee > 0 ? `${settings.currencySymbol}${b.chemicalFee.toLocaleString()}` : '-'}</td>
-                      <td className="py-2 px-3 text-right font-mono">{b.totalProductsFee > 0 ? `${settings.currencySymbol}${b.totalProductsFee.toLocaleString()}` : '-'}</td>
-                      <td className="py-2 px-3 text-right font-mono">{b.tipFee > 0 ? `${settings.currencySymbol}${b.tipFee.toLocaleString()}` : '-'}</td>
-                      <td className="py-2 px-3 text-right font-mono font-bold">{settings.currencySymbol}{b.grossTotal.toLocaleString()}</td>
-                      <td className="py-2 px-3 text-center">
-                        <span className="text-[10px] font-semibold">
-                          {b.paymentMethod === 'transfer' && '📱 โอนเงิน'}
-                          {b.paymentMethod === 'cash' && '💵 เงินสด'}
-                          {b.paymentMethod === 'split' && `🔀 สด ${b.cashAmount}/โอน ${b.transferAmount}`}
-                        </span>
-                      </td>
-                      <td className="py-2 px-3 text-right font-mono text-emerald-600 font-semibold">{settings.currencySymbol}{b.commission.barberTotalEarned.toLocaleString()}</td>
-                      <td className="py-2 px-3 text-right font-mono text-amber-600 font-semibold">{settings.currencySymbol}{b.commission.shopNetEarned.toLocaleString()}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+          {/* Conditional: Monthly Accounting Breakdown vs Daily Bills Table */}
+          {viewMode === 'monthly' ? (
+            <div className="space-y-6">
+              {/* Structure: Revenue & Inflows Breakdown */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Left: Revenue Breakdown */}
+                <div className="p-4 rounded-xl border border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-950/60 print:bg-white print:border-black">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-zinc-300 pb-2 mb-3 border-b border-slate-200 dark:border-zinc-800">
+                    📊 สรุปโครงสร้างรายรับจากการขายและบริการ
+                  </h4>
+                  <div className="space-y-2 text-xs">
+                    <div className="flex justify-between py-1 border-b border-slate-100 dark:border-zinc-800/60">
+                      <span>• บริการตัดผม ({totalHeads} หัว):</span>
+                      <span className="font-mono font-semibold">{settings.currencySymbol}{totalHaircutRev.toLocaleString()} <span className="text-[10px] text-slate-400 font-normal">({haircutRevPct}%)</span></span>
+                    </div>
+                    <div className="flex justify-between py-1 border-b border-slate-100 dark:border-zinc-800/60">
+                      <span>• บริการเคมี / ทำสี / ดัด:</span>
+                      <span className="font-mono font-semibold">{settings.currencySymbol}{totalChemRev.toLocaleString()} <span className="text-[10px] text-slate-400 font-normal">({chemRevPct}%)</span></span>
+                    </div>
+                    <div className="flex justify-between py-1 border-b border-slate-100 dark:border-zinc-800/60">
+                      <span>• จำหน่ายสินค้า / บำรุงผม:</span>
+                      <span className="font-mono font-semibold">{settings.currencySymbol}{totalProdRev.toLocaleString()} <span className="text-[10px] text-slate-400 font-normal">({prodRevPct}%)</span></span>
+                    </div>
+                    <div className="flex justify-between py-1.5 font-bold bg-slate-100/70 dark:bg-zinc-900/60 px-2 rounded-lg">
+                      <span>รวมยอดขายก่อนหักส่วนลด:</span>
+                      <span className="font-mono">{settings.currencySymbol}{totalShopGrossRevenue.toLocaleString()}</span>
+                    </div>
+                    {totalDiscounts > 0 && (
+                      <div className="flex justify-between py-1 text-rose-500 font-semibold px-2">
+                        <span>• ส่วนลดโปรโมชั่น/Voucher ร้านออกให้:</span>
+                        <span className="font-mono">-{settings.currencySymbol}{totalDiscounts.toLocaleString()}</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between py-2 font-black text-amber-600 dark:text-amber-400 bg-amber-500/10 px-2.5 rounded-lg border border-amber-500/20 text-sm">
+                      <span>รายได้ร้านจากการดำเนินงานสุทธิ:</span>
+                      <span className="font-mono">{settings.currencySymbol}{totalShopNetRevenue.toLocaleString()}</span>
+                    </div>
+                    <div className="text-[11px] text-amber-600 dark:text-amber-500 italic pt-1">
+                      * ทิปช่างส่งมอบ 100%: {settings.currencySymbol}{totalTipRev.toLocaleString()} (เงินรับฝากส่งมอบช่าง ไม่นับเป็นรายได้ร้าน)
+                    </div>
+                  </div>
+                </div>
+
+                {/* Right: Inflow & Cash Reconciliation */}
+                <div className="p-4 rounded-xl border border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-950/60 print:bg-white print:border-black">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-zinc-300 pb-2 mb-3 border-b border-slate-200 dark:border-zinc-800">
+                    🏦 สรุปช่องทางรับเงิน & กระทบยอดเงินสด
+                  </h4>
+                  <div className="space-y-2 text-xs">
+                    <div className="flex justify-between py-1 border-b border-slate-100 dark:border-zinc-800/60 text-sky-600 dark:text-sky-400 font-medium">
+                      <span>📱 เงินโอนเข้าบัญชี ({transferBillCount} บิล):</span>
+                      <span className="font-mono font-bold">{settings.currencySymbol}{totalTransfer.toLocaleString()} <span className="text-[10px] text-slate-400 font-normal">({transferInflowPct}%)</span></span>
+                    </div>
+                    <div className="flex justify-between py-1 border-b border-slate-100 dark:border-zinc-800/60 text-emerald-600 dark:text-emerald-400 font-medium">
+                      <span>💵 เงินสดรับเข้าลิ้นชัก ({cashBillCount} บิล):</span>
+                      <span className="font-mono font-bold">{settings.currencySymbol}{totalCash.toLocaleString()} <span className="text-[10px] text-slate-400 font-normal">({cashInflowPct}%)</span></span>
+                    </div>
+                    <div className="flex justify-between py-1.5 font-bold bg-slate-100/70 dark:bg-zinc-900/60 px-2 rounded-lg">
+                      <span>รวมยอดรับชำระจากลูกค้าทั้งหมด:</span>
+                      <span className="font-mono">{settings.currencySymbol}{totalCustomerInflow.toLocaleString()}</span>
+                    </div>
+                    <div className="flex justify-between py-1 text-rose-500 font-medium px-2">
+                      <span>• หัก รายจ่ายร้านที่จ่ายด้วยเงินสด:</span>
+                      <span className="font-mono">-{settings.currencySymbol}{cashExpenses.toLocaleString()}</span>
+                    </div>
+                    <div className="flex justify-between py-2 font-black text-emerald-700 dark:text-emerald-400 bg-emerald-500/10 px-2.5 rounded-lg border border-emerald-500/20 text-sm">
+                      <span>ยอดเงินสดคงเหลือสุทธิในลิ้นชัก:</span>
+                      <span className="font-mono">{settings.currencySymbol}{netCashInDrawer.toLocaleString()}</span>
+                    </div>
+                    <div className="text-[10px] text-slate-500 dark:text-zinc-400 pt-1">
+                      (เงินสดรับ {settings.currencySymbol}{totalCash.toLocaleString()} หักรายจ่ายเงินสด {settings.currencySymbol}{cashExpenses.toLocaleString()})
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Expense Categories Breakdown (Monthly View) */}
+              {expenseCategoryList.length > 0 && (
+                <div className="p-4 rounded-xl border border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-950/60 print:bg-white print:border-black">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-pink-600 dark:text-pink-400 pb-2 mb-3 border-b border-slate-200 dark:border-zinc-800 flex justify-between items-center">
+                    <span>📑 สรุปค่าใช้จ่ายร้านค้าแยกตามหมวดหมู่ (Operating Expenses by Category)</span>
+                    <span className="font-mono">รวมค่าใช้จ่าย: {settings.currencySymbol}{totalShopExpenses.toLocaleString()}</span>
+                  </h4>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-slate-100 dark:bg-zinc-900 border-b border-slate-200 dark:border-zinc-800 font-semibold">
+                        <tr>
+                          <th className="py-2 px-3">หมวดหมู่ค่าใช้จ่าย</th>
+                          <th className="py-2 px-3 text-center">จำนวนรายการ</th>
+                          <th className="py-2 px-3 text-right">ยอดรวม (บาท)</th>
+                          <th className="py-2 px-3 text-right">สัดส่วน (%)</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-200 dark:divide-zinc-800/70">
+                        {expenseCategoryList.map(([cat, val]) => (
+                          <tr key={cat}>
+                            <td className="py-2 px-3 font-medium">{cat}</td>
+                            <td className="py-2 px-3 text-center font-mono">{val.count} รายการ</td>
+                            <td className="py-2 px-3 text-right font-mono font-semibold text-rose-500">
+                              {settings.currencySymbol}{val.total.toLocaleString()}
+                            </td>
+                            <td className="py-2 px-3 text-right font-mono text-slate-500">
+                              {totalShopExpenses > 0 ? ((val.total / totalShopExpenses) * 100).toFixed(1) : '0'}%
+                            </td>
+                          </tr>
+                        ))}
+                        <tr className="font-bold bg-slate-100/80 dark:bg-zinc-900/80 border-t-2 border-slate-300 dark:border-zinc-700">
+                          <td className="py-2 px-3">รวมทุกหมวดหมู่ ({expenseCategoryList.length} หมวด)</td>
+                          <td className="py-2 px-3 text-center font-mono">{periodExpenses.length} รายการ</td>
+                          <td className="py-2 px-3 text-right font-mono text-rose-500 text-sm">
+                            {settings.currencySymbol}{totalShopExpenses.toLocaleString()}
+                          </td>
+                          <td className="py-2 px-3 text-right font-mono">100%</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* Monthly Business KPIs */}
+              <div className="p-4 rounded-xl border border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-950/60 print:bg-white print:border-black">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-zinc-300 pb-2 mb-3 border-b border-slate-200 dark:border-zinc-800">
+                  📈 สถิติตัวชี้วัดการดำเนินงานทางธุรกิจ (Monthly KPIs)
+                </h4>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
+                  <div className="p-3 bg-white dark:bg-zinc-900 rounded-lg border border-slate-200 dark:border-zinc-800">
+                    <span className="text-[10px] text-slate-500 dark:text-zinc-400 block font-medium">ยอดขายเฉลี่ย / บิล:</span>
+                    <span className="text-base font-black font-mono text-sky-600 dark:text-sky-400 mt-1 block">
+                      {settings.currencySymbol}{avgTicket.toLocaleString()}
+                    </span>
+                  </div>
+                  <div className="p-3 bg-white dark:bg-zinc-900 rounded-lg border border-slate-200 dark:border-zinc-800">
+                    <span className="text-[10px] text-slate-500 dark:text-zinc-400 block font-medium">ราคาตัดผมเฉลี่ย / หัว:</span>
+                    <span className="text-base font-black font-mono text-amber-600 dark:text-amber-400 mt-1 block">
+                      {settings.currencySymbol}{avgHaircutPrice.toLocaleString()}
+                    </span>
+                  </div>
+                  <div className="p-3 bg-white dark:bg-zinc-900 rounded-lg border border-slate-200 dark:border-zinc-800">
+                    <span className="text-[10px] text-slate-500 dark:text-zinc-400 block font-medium">รายได้เฉลี่ย / ช่าง:</span>
+                    <span className="text-base font-black font-mono text-emerald-600 dark:text-emerald-400 mt-1 block">
+                      {settings.currencySymbol}{avgBarberEarned.toLocaleString()}
+                    </span>
+                  </div>
+                  <div className="p-3 bg-white dark:bg-zinc-900 rounded-lg border border-slate-200 dark:border-zinc-800">
+                    <span className="text-[10px] text-slate-500 dark:text-zinc-400 block font-medium">อัตรากำไรสุทธิร้าน:</span>
+                    <span className="text-base font-black font-mono text-purple-600 dark:text-purple-400 mt-1 block">
+                      {shopMarginPercent}%
+                    </span>
+                  </div>
+                </div>
+              </div>
             </div>
-          </div>
+          ) : (
+            /* List of bills during this period (Daily View only) */
+            <div>
+              <h4 className="text-sm font-bold mb-2.5 flex items-center justify-between">
+                <span>รายการบันทึกบิลประจำวัน ({periodBills.length} รายการ)</span>
+                <span className="text-xs font-normal text-slate-500 font-mono">
+                  เงินสด: {settings.currencySymbol}{totalCash.toLocaleString()} | เงินโอน: {settings.currencySymbol}{totalTransfer.toLocaleString()}
+                </span>
+              </h4>
+              <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-zinc-800 print:border-black">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-100 dark:bg-zinc-950 border-b border-slate-200 dark:border-zinc-800 font-semibold print:bg-gray-100 print:border-black">
+                    <tr>
+                      <th className="py-2 px-3">เลขที่บิล / เวลา</th>
+                      <th className="py-2 px-3">ลูกค้า</th>
+                      <th className="py-2 px-3">ช่าง</th>
+                      <th className="py-2 px-3 text-right">ตัดผม</th>
+                      <th className="py-2 px-3 text-right">เคมี</th>
+                      <th className="py-2 px-3 text-right">สินค้า</th>
+                      <th className="py-2 px-3 text-right">ทิป</th>
+                      <th className="py-2 px-3 text-right font-bold">ยอดรวม</th>
+                      <th className="py-2 px-3 text-center">ช่องทางชำระ</th>
+                      <th className="py-2 px-3 text-right text-emerald-600">จ่ายช่าง</th>
+                      <th className="py-2 px-3 text-right text-amber-600">ร้านได้รับ</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-200 dark:divide-zinc-800 print:divide-black">
+                    {periodBills.map((b) => (
+                      <tr key={b.id}>
+                        <td className="py-2 px-3 font-mono">
+                          <span className="font-bold">{b.billNumber}</span>
+                          <span className="text-[10px] text-slate-400 dark:text-zinc-500 block">{b.dateStr} {b.timeStr} น.</span>
+                        </td>
+                        <td className="py-2 px-3 font-medium">{b.customerName}</td>
+                        <td className="py-2 px-3">{b.barberName}</td>
+                        <td className="py-2 px-3 text-right font-mono">{b.haircutFee > 0 ? `${settings.currencySymbol}${b.haircutFee.toLocaleString()}` : '-'}</td>
+                        <td className="py-2 px-3 text-right font-mono">{b.chemicalFee > 0 ? `${settings.currencySymbol}${b.chemicalFee.toLocaleString()}` : '-'}</td>
+                        <td className="py-2 px-3 text-right font-mono">{b.totalProductsFee > 0 ? `${settings.currencySymbol}${b.totalProductsFee.toLocaleString()}` : '-'}</td>
+                        <td className="py-2 px-3 text-right font-mono">{b.tipFee > 0 ? `${settings.currencySymbol}${b.tipFee.toLocaleString()}` : '-'}</td>
+                        <td className="py-2 px-3 text-right font-mono font-bold">{settings.currencySymbol}{b.grossTotal.toLocaleString()}</td>
+                        <td className="py-2 px-3 text-center">
+                          <span className="text-[10px] font-semibold">
+                            {b.paymentMethod === 'transfer' && '📱 โอนเงิน'}
+                            {b.paymentMethod === 'cash' && '💵 เงินสด'}
+                            {b.paymentMethod === 'split' && `🔀 สด ${b.cashAmount}/โอน ${b.transferAmount}`}
+                          </span>
+                        </td>
+                        <td className="py-2 px-3 text-right font-mono text-emerald-600 font-semibold">{settings.currencySymbol}{b.commission.barberTotalEarned.toLocaleString()}</td>
+                        <td className="py-2 px-3 text-right font-mono text-amber-600 font-semibold">{settings.currencySymbol}{b.commission.shopNetEarned.toLocaleString()}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
 
           {/* List of shop expenses during this period */}
           {periodExpenses.length > 0 && (

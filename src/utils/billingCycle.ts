@@ -18,6 +18,9 @@ export interface BillingCycleInfo {
   startDate: string; // YYYY-MM-DD
   endDate: string; // YYYY-MM-DD
   nextCycleStartDate: string; // YYYY-MM-DD
+  monthNameTh: string; // e.g. "สิงหาคม"
+  yearTh: number; // e.g. 2569
+  monthOnlyLabel: string; // e.g. "รอบบิลเดือนสิงหาคม 2569"
   label: string; // e.g. "26 ก.ค. - 25 ส.ค. 2569" or "1 - 31 ส.ค. 2569"
   fullLabel: string; // e.g. "รอบบิลประจำเดือน สิงหาคม 2569 (26 ก.ค. - 25 ส.ค. 2569)"
   cycleSummaryBadge: string; // e.g. "รอบบิล: 26 ก.ค. 69 - 25 ส.ค. 69 (ตัดรอบทุกวันที่ 25)"
@@ -102,6 +105,8 @@ export function getBillingCycleInfo(selectedMonth: string, cutoffDay: number = 0
       });
     }
 
+    const monthOnlyLabel = `รอบบิลเดือน${monthNameTh} ${yearTh}`;
+
     result = {
       selectedMonth,
       cutoffDay: 0,
@@ -109,6 +114,9 @@ export function getBillingCycleInfo(selectedMonth: string, cutoffDay: number = 0
       startDate,
       endDate,
       nextCycleStartDate,
+      monthNameTh,
+      yearTh,
+      monthOnlyLabel,
       label,
       fullLabel,
       cycleSummaryBadge,
@@ -178,6 +186,8 @@ export function getBillingCycleInfo(selectedMonth: string, cutoffDay: number = 0
       });
     }
 
+    const monthOnlyLabel = `รอบบิลเดือน${monthNameTh} ${yearTh}`;
+
     result = {
       selectedMonth,
       cutoffDay: effectiveCutoff,
@@ -185,6 +195,9 @@ export function getBillingCycleInfo(selectedMonth: string, cutoffDay: number = 0
       startDate,
       endDate,
       nextCycleStartDate,
+      monthNameTh,
+      yearTh,
+      monthOnlyLabel,
       label,
       fullLabel,
       cycleSummaryBadge,

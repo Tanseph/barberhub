@@ -70,10 +70,43 @@ export async function exportReportToPDF({
   const cutoffDay = settings.billingCycleCutoffDay ?? 0;
   const billingCycleInfo = getBillingCycleInfo(selectedMonth, cutoffDay);
 
+  // For monthly view: show only the month name and year, without cutoff details
   const reportPeriodTitle =
     viewMode === 'daily'
       ? `ประจำวันที่ ${selectedDate}`
-      : `รอบบิลเดือน ${billingCycleInfo.fullLabel} (${billingCycleInfo.cutoffDescription})`;
+      : billingCycleInfo.monthOnlyLabel;
+
+  const hasAddress = settings.shopAddress && settings.shopAddress.trim() !== '' && !settings.shopAddress.includes('ทองหล่อ');
+  const hasPhone = settings.shopPhone && settings.shopPhone.trim() !== '' && !settings.shopPhone.includes('02-888-9999');
+  const hasPromptPay = settings.shopPromptPay && settings.shopPromptPay.trim() !== '' && settings.shopPromptPay !== '0891234567';
+
+  // Expense grouping by category for accounting
+  const cashExpenses = periodExpenses.filter((e) => e.paymentMethod === 'cash').reduce((s, e) => s + e.amount, 0);
+  const transferExpenses = periodExpenses.filter((e) => e.paymentMethod === 'transfer').reduce((s, e) => s + e.amount, 0);
+  const netCashInDrawer = totalCash - cashExpenses;
+
+  const expensesByCategory = periodExpenses.reduce((acc, exp) => {
+    const cat = exp.category || 'เบ็ดเตล็ด';
+    if (!acc[cat]) {
+      acc[cat] = { count: 0, total: 0 };
+    }
+    acc[cat].count += 1;
+    acc[cat].total += exp.amount;
+    return acc;
+  }, {} as Record<string, { count: number; total: number }>);
+
+  const expenseCategoryList = Object.entries(expensesByCategory).sort((a, b) => b[1].total - a[1].total);
+
+  const totalCustomerInflow = totalCash + totalTransfer;
+  const transferInflowPct = totalCustomerInflow > 0 ? ((totalTransfer / totalCustomerInflow) * 100).toFixed(1) : '0';
+  const cashInflowPct = totalCustomerInflow > 0 ? ((totalCash / totalCustomerInflow) * 100).toFixed(1) : '0';
+  const haircutRevPct = totalShopSalesGross > 0 ? ((totalHaircutRev / totalShopSalesGross) * 100).toFixed(1) : '0';
+  const chemRevPct = totalShopSalesGross > 0 ? ((totalChemRev / totalShopSalesGross) * 100).toFixed(1) : '0';
+  const prodRevPct = totalShopSalesGross > 0 ? ((totalProdRev / totalShopSalesGross) * 100).toFixed(1) : '0';
+
+  const avgTicket = totalBills > 0 ? Math.round(totalShopNetRevenue / totalBills) : 0;
+  const avgHaircutPrice = totalHeads > 0 ? Math.round(totalHaircutRev / totalHeads) : 0;
+  const avgBarberEarned = barberSummaries.length > 0 ? Math.round(totalBarberPayout / barberSummaries.length) : 0;
 
   // Create an offscreen, clean HTML container with pure inline RGB/HEX styles
   // to avoid Tailwind 4 oklch() color parsing bugs in html2canvas
@@ -95,11 +128,16 @@ export async function exportReportToPDF({
       <div style="border-bottom: 2px solid #0f172a; padding-bottom: 16px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: flex-end;">
         <div>
           <h1 style="margin: 0 0 4px 0; font-size: 22px; font-weight: 900; color: #0f172a;">${settings.shopName || 'BARBER POS'}</h1>
+          ${
+            hasAddress || hasPhone || hasPromptPay
+              ? `
           <div style="font-size: 11px; color: #475569; font-family: monospace;">
-            ${settings.shopAddress ? `<div>ที่อยู่: ${settings.shopAddress}</div>` : ''}
-            ${settings.shopPhone ? `<div>โทรศัพท์: ${settings.shopPhone}</div>` : ''}
-            ${settings.shopPromptPay ? `<div>พร้อมเพย์: ${settings.shopPromptPay}</div>` : ''}
-          </div>
+            ${hasAddress ? `<div>ที่อยู่: ${settings.shopAddress}</div>` : ''}
+            ${hasPhone ? `<div>โทรศัพท์: ${settings.shopPhone}</div>` : ''}
+            ${hasPromptPay ? `<div>พร้อมเพย์: ${settings.shopPromptPay}</div>` : ''}
+          </div>`
+              : ''
+          }
         </div>
         <div style="text-align: right;">
           <div style="display: inline-block; background-color: #fef3c7; color: #92400e; padding: 4px 12px; border-radius: 6px; font-weight: bold; font-size: 12px; margin-bottom: 6px; border: 1px solid #fde68a;">
@@ -232,7 +270,174 @@ export async function exportReportToPDF({
         </table>
       </div>
 
-      <!-- Sales Bills Ledger Table -->
+      <!-- Monthly Accounting Structure: Revenue & Inflow Breakdown -->
+      ${
+        viewMode === 'monthly'
+          ? `
+      <div style="display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 16px; margin-bottom: 24px;">
+        <!-- Left: Revenue Breakdown -->
+        <div style="border: 1px solid #cbd5e1; border-radius: 8px; padding: 14px; background-color: #ffffff;">
+          <h3 style="margin: 0 0 10px 0; font-size: 12px; font-weight: bold; color: #0f172a; border-bottom: 2px solid #e2e8f0; padding-bottom: 6px;">
+            📊 สรุปโครงสร้างรายรับจากการขายและบริการ
+          </h3>
+          <table style="width: 100%; border-collapse: collapse; font-size: 11px;">
+            <tbody>
+              <tr style="border-bottom: 1px solid #f1f5f9;">
+                <td style="padding: 5px 0;">• บริการตัดผม (${totalHeads} หัว):</td>
+                <td style="padding: 5px 0; text-align: right; font-family: monospace; font-weight: 600;">฿${totalHaircutRev.toLocaleString()}</td>
+                <td style="padding: 5px 0 5px 8px; text-align: right; color: #64748b; font-size: 10px; width: 45px;">(${haircutRevPct}%)</td>
+              </tr>
+              <tr style="border-bottom: 1px solid #f1f5f9;">
+                <td style="padding: 5px 0;">• บริการเคมี / ทำสี / ทรีทเม้นท์:</td>
+                <td style="padding: 5px 0; text-align: right; font-family: monospace; font-weight: 600;">฿${totalChemRev.toLocaleString()}</td>
+                <td style="padding: 5px 0 5px 8px; text-align: right; color: #64748b; font-size: 10px;">(${chemRevPct}%)</td>
+              </tr>
+              <tr style="border-bottom: 1px solid #f1f5f9;">
+                <td style="padding: 5px 0;">• จำหน่ายสินค้า / ผลิตภัณฑ์ดูแลเส้นผม:</td>
+                <td style="padding: 5px 0; text-align: right; font-family: monospace; font-weight: 600;">฿${totalProdRev.toLocaleString()}</td>
+                <td style="padding: 5px 0 5px 8px; text-align: right; color: #64748b; font-size: 10px;">(${prodRevPct}%)</td>
+              </tr>
+              <tr style="border-bottom: 1px solid #f1f5f9; background-color: #f8fafc;">
+                <td style="padding: 5px 4px; font-weight: bold;">รวมยอดขายก่อนหักส่วนลด:</td>
+                <td style="padding: 5px 0; text-align: right; font-family: monospace; font-weight: bold;">฿${totalShopSalesGross.toLocaleString()}</td>
+                <td style="padding: 5px 0 5px 8px; text-align: right; color: #64748b; font-size: 10px;">(100%)</td>
+              </tr>
+              ${
+                totalDiscounts > 0
+                  ? `
+              <tr style="border-bottom: 1px solid #f1f5f9; color: #ef4444;">
+                <td style="padding: 5px 0;">• ส่วนลดโปรโมชั่น / คูปองเวาเชอร์:</td>
+                <td style="padding: 5px 0; text-align: right; font-family: monospace; font-weight: 600;">-฿${totalDiscounts.toLocaleString()}</td>
+                <td style="padding: 5px 0 5px 8px; text-align: right; font-size: 10px;"></td>
+              </tr>`
+                  : ''
+              }
+              <tr style="border-top: 2px solid #cbd5e1; font-weight: bold; background-color: #fefce8;">
+                <td style="padding: 6px 4px; color: #854d0e;">รายได้ร้านจากการดำเนินงานสุทธิ:</td>
+                <td style="padding: 6px 0; text-align: right; font-family: monospace; font-size: 13px; color: #854d0e;">฿${totalShopNetRevenue.toLocaleString()}</td>
+                <td></td>
+              </tr>
+              <tr>
+                <td colspan="3" style="padding: 6px 0 0 0; font-size: 10px; color: #b45309; font-style: italic;">
+                  * ทิปช่างส่งมอบ 100%: ฿${totalTipRev.toLocaleString()} (เป็นเงินรับฝากส่งต่อช่าง ไม่นับเป็นรายได้ร้าน)
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Right: Inflow & Cash Reconciliation -->
+        <div style="border: 1px solid #cbd5e1; border-radius: 8px; padding: 14px; background-color: #ffffff;">
+          <h3 style="margin: 0 0 10px 0; font-size: 12px; font-weight: bold; color: #0f172a; border-bottom: 2px solid #e2e8f0; padding-bottom: 6px;">
+            🏦 สรุปช่องทางรับเงิน & กระทบยอดเงินสด
+          </h3>
+          <table style="width: 100%; border-collapse: collapse; font-size: 11px;">
+            <tbody>
+              <tr style="border-bottom: 1px solid #f1f5f9;">
+                <td style="padding: 5px 0;">📱 เงินโอนเข้าบัญชี (${transferBillCount} บิล):</td>
+                <td style="padding: 5px 0; text-align: right; font-family: monospace; font-weight: 600; color: #0284c7;">฿${totalTransfer.toLocaleString()}</td>
+                <td style="padding: 5px 0 5px 8px; text-align: right; color: #64748b; font-size: 10px; width: 45px;">(${transferInflowPct}%)</td>
+              </tr>
+              <tr style="border-bottom: 1px solid #f1f5f9;">
+                <td style="padding: 5px 0;">💵 เงินสดรับเข้าลิ้นชัก (${cashBillCount} บิล):</td>
+                <td style="padding: 5px 0; text-align: right; font-family: monospace; font-weight: 600; color: #059669;">฿${totalCash.toLocaleString()}</td>
+                <td style="padding: 5px 0 5px 8px; text-align: right; color: #64748b; font-size: 10px;">(${cashInflowPct}%)</td>
+              </tr>
+              <tr style="border-bottom: 1px solid #f1f5f9; background-color: #f8fafc;">
+                <td style="padding: 5px 4px; font-weight: bold;">รวมยอดรับชำระจากลูกค้าทั้งหมด:</td>
+                <td style="padding: 5px 0; text-align: right; font-family: monospace; font-weight: bold;">฿${totalCustomerInflow.toLocaleString()}</td>
+                <td style="padding: 5px 0 5px 8px; text-align: right; color: #64748b; font-size: 10px;">(100%)</td>
+              </tr>
+              <tr style="border-top: 2px solid #e2e8f0; color: #dc2626;">
+                <td style="padding: 5px 0;">• หัก ค่าใช้จ่ายร้านที่จ่ายเป็นเงินสด:</td>
+                <td style="padding: 5px 0; text-align: right; font-family: monospace; font-weight: 600;">-฿${cashExpenses.toLocaleString()}</td>
+                <td></td>
+              </tr>
+              <tr style="border-top: 1px solid #cbd5e1; font-weight: bold; background-color: #f0fdf4;">
+                <td style="padding: 6px 4px; color: #166534;">ยอดเงินสดคงเหลือสุทธิในลิ้นชัก:</td>
+                <td style="padding: 6px 0; text-align: right; font-family: monospace; font-size: 13px; color: #166534;">฿${netCashInDrawer.toLocaleString()}</td>
+                <td></td>
+              </tr>
+              <tr>
+                <td colspan="3" style="padding: 6px 0 0 0; font-size: 10px; color: #475569;">
+                  (คำนวณจากเงินสดรับ ฿${totalCash.toLocaleString()} หักรายจ่ายเงินสด ฿${cashExpenses.toLocaleString()})
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Expense Categories Breakdown (Monthly) -->
+      ${
+        expenseCategoryList.length > 0
+          ? `
+      <div style="margin-bottom: 24px; border: 1px solid #cbd5e1; border-radius: 8px; padding: 14px; background-color: #ffffff;">
+        <h3 style="margin: 0 0 10px 0; font-size: 12px; font-weight: bold; color: #db2777; border-bottom: 2px solid #fce7f3; padding-bottom: 6px; display: flex; justify-content: space-between;">
+          <span>📑 สรุปค่าใช้จ่ายในการดำเนินงานแยกตามหมวดหมู่ (Operating Expenses by Category)</span>
+          <span style="font-size: 11px; font-family: monospace;">รวมค่าใช้จ่าย: ฿${totalShopExpenses.toLocaleString()}</span>
+        </h3>
+        <table style="width: 100%; border-collapse: collapse; font-size: 11px; text-align: left;">
+          <thead>
+            <tr style="background-color: #fdf2f8; border-top: 1px solid #fbcfe8; border-bottom: 2px solid #f472b6;">
+              <th style="padding: 5px 8px;">หมวดหมู่ค่าใช้จ่าย</th>
+              <th style="padding: 5px 8px; text-align: center;">จำนวนรายการ</th>
+              <th style="padding: 5px 8px; text-align: right;">ยอดรวมเงิน (บาท)</th>
+              <th style="padding: 5px 8px; text-align: right;">สัดส่วน (%)</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${expenseCategoryList
+              .map(
+                ([cat, val]) => `
+            <tr style="border-bottom: 1px solid #fce7f3;">
+              <td style="padding: 5px 8px; font-weight: 500;">${cat}</td>
+              <td style="padding: 5px 8px; text-align: center; font-family: monospace;">${val.count} รายการ</td>
+              <td style="padding: 5px 8px; text-align: right; font-family: monospace; font-weight: 600; color: #dc2626;">฿${val.total.toLocaleString()}</td>
+              <td style="padding: 5px 8px; text-align: right; font-family: monospace; color: #64748b;">${totalShopExpenses > 0 ? ((val.total / totalShopExpenses) * 100).toFixed(1) : '0'}%</td>
+            </tr>
+            `
+              )
+              .join('')}
+            <tr style="background-color: #fdf2f8; font-weight: bold; border-top: 2px solid #fbcfe8;">
+              <td style="padding: 6px 8px;">รวมทุกหมวดหมู่ (${expenseCategoryList.length} หมวด)</td>
+              <td style="padding: 6px 8px; text-align: center; font-family: monospace;">${periodExpenses.length} รายการ</td>
+              <td style="padding: 6px 8px; text-align: right; font-family: monospace; color: #dc2626; font-size: 12px;">฿${totalShopExpenses.toLocaleString()}</td>
+              <td style="padding: 6px 8px; text-align: right; font-family: monospace;">100%</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>`
+          : ''
+      }
+
+      <!-- Monthly KPIs Card -->
+      <div style="margin-bottom: 24px; border: 1px solid #cbd5e1; border-radius: 8px; padding: 12px 16px; background-color: #f8fafc;">
+        <h3 style="margin: 0 0 8px 0; font-size: 12px; font-weight: bold; color: #0f172a; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px;">
+          📈 สถิติตัวชี้วัดการดำเนินงานทางธุรกิจ (Monthly KPIs)
+        </h3>
+        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; text-align: center; font-size: 11px;">
+          <div style="background-color: #ffffff; padding: 8px; border-radius: 6px; border: 1px solid #e2e8f0;">
+            <div style="color: #64748b; font-size: 10px;">ยอดขายเฉลี่ย / บิล:</div>
+            <div style="font-size: 13px; font-weight: bold; font-family: monospace; color: #0284c7; margin-top: 2px;">฿${avgTicket.toLocaleString()}</div>
+          </div>
+          <div style="background-color: #ffffff; padding: 8px; border-radius: 6px; border: 1px solid #e2e8f0;">
+            <div style="color: #64748b; font-size: 10px;">ราคาตัดผมเฉลี่ย / หัว:</div>
+            <div style="font-size: 13px; font-weight: bold; font-family: monospace; color: #b45309; margin-top: 2px;">฿${avgHaircutPrice.toLocaleString()}</div>
+          </div>
+          <div style="background-color: #ffffff; padding: 8px; border-radius: 6px; border: 1px solid #e2e8f0;">
+            <div style="color: #64748b; font-size: 10px;">รายได้เฉลี่ย / ช่าง:</div>
+            <div style="font-size: 13px; font-weight: bold; font-family: monospace; color: #059669; margin-top: 2px;">฿${avgBarberEarned.toLocaleString()}</div>
+          </div>
+          <div style="background-color: #ffffff; padding: 8px; border-radius: 6px; border: 1px solid #e2e8f0;">
+            <div style="color: #64748b; font-size: 10px;">อัตรากำไรสุทธิร้าน:</div>
+            <div style="font-size: 13px; font-weight: bold; font-family: monospace; color: #7e22ce; margin-top: 2px;">${shopMarginPercent}%</div>
+          </div>
+        </div>
+      </div>
+      `
+          : `
+      <!-- Sales Bills Ledger Table (Daily view only) -->
       <div style="margin-bottom: 24px;">
         <h2 style="font-size: 13px; font-weight: bold; margin: 0 0 8px 0; color: #0f172a; border-left: 4px solid #3b82f6; padding-left: 8px; display: flex; justify-content: space-between;">
           <span>รายการบิลขายประจำงวด (${periodBills.length} บิล)</span>
@@ -268,7 +473,7 @@ export async function exportReportToPDF({
                 </td>
                 <td style="padding: 5px 6px; font-weight: 500;">${b.customerName}</td>
                 <td style="padding: 5px 6px;">${b.barberName}</td>
-                <td style="padding: 5px 6px; text-align: right; font-family: monospace;">${b.haircutFee > 0 ? `฿${b.haircutFee.toLocaleString()}${(b.headCount && b.headCount > 1) ? ` (${b.headCount}หัว)` : ''}` : (b.totalProductsFee > 0 ? '<span style="color: #b45309; font-size: 8px;">สินค้า (0หัว)</span>' : '-')}</td>
+                <td style="padding: 5px 6px; text-align: right; font-family: monospace;">${b.haircutFee > 0 ? `฿${b.haircutFee.toLocaleString()}${b.headCount && b.headCount > 1 ? ` (${b.headCount}หัว)` : ''}` : b.totalProductsFee > 0 ? '<span style="color: #b45309; font-size: 8px;">สินค้า (0หัว)</span>' : '-'}</td>
                 <td style="padding: 5px 6px; text-align: right; font-family: monospace;">${b.chemicalFee > 0 ? `฿${b.chemicalFee.toLocaleString()}` : '-'}</td>
                 <td style="padding: 5px 6px; text-align: right; font-family: monospace;">${b.totalProductsFee > 0 ? `฿${b.totalProductsFee.toLocaleString()}` : '-'}</td>
                 <td style="padding: 5px 6px; text-align: right; font-family: monospace;">${b.tipFee > 0 ? `฿${b.tipFee.toLocaleString()}` : '-'}</td>
@@ -288,6 +493,8 @@ export async function exportReportToPDF({
           </tbody>
         </table>
       </div>
+      `
+      }
 
       <!-- Shop Expenses Ledger Table (if any) -->
       ${

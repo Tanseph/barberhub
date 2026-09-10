@@ -427,9 +427,9 @@ export const CLEAN_SETTINGS: ShopSettings = {
 
 export const INITIAL_SETTINGS: ShopSettings = {
   shopName: 'GENTLEMAN BARBER & CO.',
-  shopPhone: '02-888-9999 / 089-123-4567',
-  shopAddress: '128/9 ถนนสุขุมวิท 55 (ทองหล่อ) แขวงคลองตันเหนือ เขตวัฒนา กรุงเทพฯ 10110',
-  shopPromptPay: '0891234567',
+  shopPhone: '',
+  shopAddress: '',
+  shopPromptPay: '',
   logoUrl: '',
   currencySymbol: '฿',
   defaultHaircutCommission: 50,

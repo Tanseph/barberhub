@@ -219,13 +219,9 @@ export const ModalEditBill: React.FC = () => {
                 <label className={`block text-xs font-semibold ${mutedText}`}>
                   ค่าตัดผม ({settings.currencySymbol})
                 </label>
-                {Number(haircutFee) > 0 ? (
+                {Number(haircutFee) > 0 && (
                   <span className="text-[10px] font-bold text-emerald-500 font-mono">
                     {headCount} หัว
-                  </span>
-                ) : (
-                  <span className="text-[10px] font-bold text-amber-500">
-                    0 หัว (ซื้อสินค้า)
                   </span>
                 )}
               </div>
@@ -244,7 +240,7 @@ export const ModalEditBill: React.FC = () => {
                 }}
                 className={`${inputClass} font-semibold text-emerald-600`}
               />
-              {Number(haircutFee) > 0 ? (
+              {Number(haircutFee) > 0 && (
                 <div className="mt-1.5 flex items-center justify-between text-[11px]">
                   <span className={mutedText}>จำนวนหัว:</span>
                   <div className="flex items-center gap-1">
@@ -265,10 +261,6 @@ export const ModalEditBill: React.FC = () => {
                       </button>
                     ))}
                   </div>
-                </div>
-              ) : (
-                <div className="mt-1 text-[11px] text-amber-500 font-medium">
-                  🛒 ซื้อสินค้าอย่างเดียว (ไม่นับหัว)
                 </div>
               )}
             </div>

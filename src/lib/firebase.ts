@@ -91,9 +91,15 @@ export function isSuperAdmin(email: string | null | undefined): boolean {
   return SUPER_ADMIN_EMAILS.includes(email.trim().toLowerCase());
 }
 
-// Helper to sanitize objects for Firestore (remove undefined fields and invalid values)
+// Helper to sanitize objects for Firestore (remove undefined fields and invalid values like NaN or Infinity)
 export function cleanFirestoreData<T>(obj: T): T {
   if (obj === null || obj === undefined) return obj;
+  if (typeof obj === 'number') {
+    return (isNaN(obj) || !isFinite(obj) ? 0 : obj) as unknown as T;
+  }
+  if (typeof obj === 'string' || typeof obj === 'boolean') {
+    return obj;
+  }
   if (obj instanceof Date) return obj;
   if (Array.isArray(obj)) {
     return obj
@@ -104,7 +110,11 @@ export function cleanFirestoreData<T>(obj: T): T {
     const cleaned: Record<string, any> = {};
     for (const [key, value] of Object.entries(obj)) {
       if (value !== undefined) {
-        cleaned[key] = cleanFirestoreData(value);
+        if (typeof value === 'number' && (isNaN(value) || !isFinite(value))) {
+          cleaned[key] = 0;
+        } else {
+          cleaned[key] = cleanFirestoreData(value);
+        }
       }
     }
     return cleaned as T;
@@ -191,6 +201,9 @@ export function subscribeToUserAccount(
 
 // Connection test
 export async function testConnection(): Promise<boolean> {
+  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+    return false;
+  }
   try {
     await getDocFromServer(doc(db, 'test', 'connection'));
     return true;

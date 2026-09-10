@@ -214,7 +214,44 @@ function getTenantStorageKeys(shopId: string) {
     BILLS: `barber_pos_${shopId}_bills_v2`,
     EXPENSES: `barber_pos_${shopId}_expenses_v2`,
     QUEUES: `barber_pos_${shopId}_queues_v2`,
+    DELETED_IDS: `barber_pos_${shopId}_deleted_ids_v2`,
   };
+}
+
+function getLocalTenantData<T>(key: string): T[] {
+  try {
+    const saved = localStorage.getItem(key);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch {}
+  return [];
+}
+
+function getDeletedIds(shopId: string): Set<string> {
+  try {
+    const raw = localStorage.getItem(`barber_pos_${shopId}_deleted_ids_v2`);
+    if (raw) {
+      const arr = JSON.parse(raw);
+      if (Array.isArray(arr)) return new Set(arr);
+    }
+  } catch {}
+  return new Set();
+}
+
+function markIdDeleted(shopId: string, id: string) {
+  try {
+    const set = getDeletedIds(shopId);
+    set.add(id);
+    localStorage.setItem(`barber_pos_${shopId}_deleted_ids_v2`, JSON.stringify(Array.from(set)));
+  } catch {}
+}
+
+function clearDeletedIds(shopId: string) {
+  try {
+    localStorage.removeItem(`barber_pos_${shopId}_deleted_ids_v2`);
+  } catch {}
 }
 
 // Helper: Standardize time string into HH:mm format for reliable comparison
@@ -303,6 +340,26 @@ export const calculateAutoQueueStatus = (
   return 'waiting';
 };
 
+const sanitizeShopSettings = (s: ShopSettings): ShopSettings => {
+  const cleaned = { ...s };
+  if (
+    cleaned.shopAddress === '128/9 ถนนสุขุมวิท 55 (ทองหล่อ) แขวงคลองตันเหนือ เขตวัฒนา กรุงเทพฯ 10110' ||
+    cleaned.shopAddress?.includes('ทองหล่อ')
+  ) {
+    cleaned.shopAddress = '';
+  }
+  if (
+    cleaned.shopPhone === '02-888-9999 / 089-123-4567' ||
+    cleaned.shopPhone?.includes('02-888-9999')
+  ) {
+    cleaned.shopPhone = '';
+  }
+  if (cleaned.shopPromptPay === '0891234567') {
+    cleaned.shopPromptPay = '';
+  }
+  return cleaned;
+};
+
 export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   // Current logged in email
   const [currentUserEmail, setCurrentUserEmail] = useState<string | null>(() => {
@@ -329,7 +386,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           if (!parsed.voucherPresetAmounts || parsed.voucherPresetAmounts.length === 0) {
             parsed.voucherPresetAmounts = [50, 100, 200, 300, 500];
           }
-          return parsed;
+          return sanitizeShopSettings(parsed);
         }
       } catch (e) {
         console.error(e);
@@ -820,48 +877,160 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       setCloudSyncStatus(connected ? 'synced' : 'offline');
     });
 
-    // Subscribe to cloud Firestore changes
+    // Subscribe to cloud Firestore changes with zero-data-loss protection
     setCloudSyncStatus('syncing');
     const unsubs = subscribeToShopData(currentShopId, {
       onSettings: (cloudSettings) => {
         if (cloudSettings) {
-          setSettings(cloudSettings);
+          setSettings((prev) => {
+            const merged = sanitizeShopSettings({ ...prev, ...cloudSettings });
+            const keys = getTenantStorageKeys(currentShopId);
+            localStorage.setItem(keys.SETTINGS, JSON.stringify(merged));
+            // If cloud had dummy address/phone, update cloud with sanitized settings
+            if (
+              (cloudSettings.shopAddress && cloudSettings.shopAddress.includes('ทองหล่อ')) ||
+              (cloudSettings.shopPhone && cloudSettings.shopPhone.includes('02-888-9999')) ||
+              cloudSettings.shopPromptPay === '0891234567'
+            ) {
+              if (currentUserEmail) {
+                saveShopSettingsToCloud(currentShopId, currentUserEmail, merged).catch(console.error);
+              }
+            }
+            return merged;
+          });
+        } else {
+          // If cloud has no settings yet, push local settings to cloud
           const keys = getTenantStorageKeys(currentShopId);
-          localStorage.setItem(keys.SETTINGS, JSON.stringify(cloudSettings));
+          const localSettings = localStorage.getItem(keys.SETTINGS);
+          if (localSettings && currentUserEmail) {
+            try {
+              const parsed = JSON.parse(localSettings);
+              saveShopSettingsToCloud(currentShopId, currentUserEmail, parsed).catch(console.error);
+            } catch {}
+          }
         }
       },
       onBarbers: (cloudBarbers) => {
-        setBarbers(cloudBarbers || []);
         const keys = getTenantStorageKeys(currentShopId);
-        localStorage.setItem(keys.BARBERS, JSON.stringify(cloudBarbers || []));
+        const deletedIds = getDeletedIds(currentShopId);
+        const localBarbers = getLocalTenantData<Barber>(keys.BARBERS);
+
+        const validCloudBarbers = (cloudBarbers || []).filter((b) => !deletedIds.has(b.id));
+        const cloudIdSet = new Set(validCloudBarbers.map((b) => b.id));
+
+        // Keep local barbers not in cloud (and not deleted), and push them up
+        const unsyncedLocal = localBarbers.filter((b) => !cloudIdSet.has(b.id) && !deletedIds.has(b.id));
+        for (const ul of unsyncedLocal) {
+          saveDocumentToCloud(currentShopId, 'barbers', ul).catch(console.error);
+        }
+
+        const merged = [...validCloudBarbers, ...unsyncedLocal];
+        if (merged.length === 0) {
+          setBarbers(INITIAL_BARBERS);
+          localStorage.setItem(keys.BARBERS, JSON.stringify(INITIAL_BARBERS));
+          INITIAL_BARBERS.forEach((ib) => {
+            saveDocumentToCloud(currentShopId, 'barbers', ib).catch(console.error);
+          });
+        } else {
+          setBarbers(merged);
+          localStorage.setItem(keys.BARBERS, JSON.stringify(merged));
+        }
       },
       onProducts: (cloudProducts) => {
-        setProducts(cloudProducts || []);
         const keys = getTenantStorageKeys(currentShopId);
-        localStorage.setItem(keys.PRODUCTS, JSON.stringify(cloudProducts || []));
+        const deletedIds = getDeletedIds(currentShopId);
+        const localProducts = getLocalTenantData<ProductItem>(keys.PRODUCTS);
+
+        const validCloud = (cloudProducts || []).filter((p) => !deletedIds.has(p.id));
+        const cloudIdSet = new Set(validCloud.map((p) => p.id));
+
+        const unsynced = localProducts.filter((p) => !cloudIdSet.has(p.id) && !deletedIds.has(p.id));
+        for (const u of unsynced) {
+          saveDocumentToCloud(currentShopId, 'products', u).catch(console.error);
+        }
+
+        const merged = [...validCloud, ...unsynced];
+        setProducts(merged);
+        localStorage.setItem(keys.PRODUCTS, JSON.stringify(merged));
       },
       onBills: (cloudBills) => {
-        const normalized = (cloudBills || []).map((b) => ({
+        const keys = getTenantStorageKeys(currentShopId);
+        const deletedIds = getDeletedIds(currentShopId);
+        const localBills = getLocalTenantData<SaleBill>(keys.BILLS);
+
+        // Delete from cloud any bill that was deleted locally
+        for (const cb of cloudBills || []) {
+          if (deletedIds.has(cb.id)) {
+            deleteDocumentFromCloud(currentShopId, 'bills', cb.id).catch(console.error);
+          }
+        }
+
+        const validCloud = (cloudBills || []).filter((b) => !deletedIds.has(b.id));
+        const cloudIdSet = new Set(validCloud.map((b) => b.id));
+
+        // Preserve any bill created locally (e.g. offline) that isn't in cloud yet
+        const unsynced = localBills.filter((b) => !cloudIdSet.has(b.id) && !deletedIds.has(b.id));
+        for (const u of unsynced) {
+          saveDocumentToCloud(currentShopId, 'bills', u).catch(console.error);
+        }
+
+        const merged = [...validCloud, ...unsynced];
+        const normalized = merged.map((b) => ({
           ...b,
           headCount: b.haircutFee > 0 ? (typeof b.headCount === 'number' && b.headCount > 0 ? b.headCount : 1) : 0,
         }));
+        normalized.sort(
+          (a, b) => (b.timestamp || 0) - (a.timestamp || 0) || b.billNumber.localeCompare(a.billNumber)
+        );
+
         setBills(normalized);
-        const keys = getTenantStorageKeys(currentShopId);
         localStorage.setItem(keys.BILLS, JSON.stringify(normalized));
+        setCloudSyncStatus('synced');
       },
       onExpenses: (cloudExpenses) => {
-        setExpenses(cloudExpenses || []);
         const keys = getTenantStorageKeys(currentShopId);
-        localStorage.setItem(keys.EXPENSES, JSON.stringify(cloudExpenses || []));
+        const deletedIds = getDeletedIds(currentShopId);
+        const localExpenses = getLocalTenantData<ShopExpense>(keys.EXPENSES);
+
+        for (const ce of cloudExpenses || []) {
+          if (deletedIds.has(ce.id)) {
+            deleteDocumentFromCloud(currentShopId, 'expenses', ce.id).catch(console.error);
+          }
+        }
+
+        const validCloud = (cloudExpenses || []).filter((e) => !deletedIds.has(e.id));
+        const cloudIdSet = new Set(validCloud.map((e) => e.id));
+
+        const unsynced = localExpenses.filter((e) => !cloudIdSet.has(e.id) && !deletedIds.has(e.id));
+        for (const u of unsynced) {
+          saveDocumentToCloud(currentShopId, 'expenses', u).catch(console.error);
+        }
+
+        const merged = [...validCloud, ...unsynced];
+        merged.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0) || (b.dateStr || '').localeCompare(a.dateStr || ''));
+        setExpenses(merged);
+        localStorage.setItem(keys.EXPENSES, JSON.stringify(merged));
       },
       onQueues: (cloudQueues) => {
         const today = new Date();
         const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-        const allQ = cloudQueues || [];
-        const activeQueues = allQ
+        const keys = getTenantStorageKeys(currentShopId);
+        const deletedIds = getDeletedIds(currentShopId);
+        const localQueues = getLocalTenantData<QueueBooking>(keys.QUEUES);
+
+        const allCloud = (cloudQueues || []).filter((q) => !deletedIds.has(q.id));
+        const cloudIdSet = new Set(allCloud.map((q) => q.id));
+
+        const unsynced = localQueues.filter((q) => !cloudIdSet.has(q.id) && !deletedIds.has(q.id));
+        for (const u of unsynced) {
+          saveDocumentToCloud(currentShopId, 'queues', u).catch(console.error);
+        }
+
+        const combined = [...allCloud, ...unsynced];
+        const activeQueues = combined
           .filter((q) => !q.date || q.date >= todayStr)
           .map((q) => ({ ...q, status: calculateAutoQueueStatus(q, today) }));
-        const pastQueues = allQ.filter((q) => q.date && q.date < todayStr);
+        const pastQueues = combined.filter((q) => q.date && q.date < todayStr);
 
         // Permanently purge past queues from Cloud Firestore so they don't linger
         if (pastQueues.length > 0 && currentShopId) {
@@ -871,14 +1040,27 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         }
 
         setQueues(activeQueues);
-        const keys = getTenantStorageKeys(currentShopId);
         localStorage.setItem(keys.QUEUES, JSON.stringify(activeQueues));
       },
     });
 
     setCloudSyncStatus('synced');
 
+    const handleOnline = () => {
+      setCloudSyncStatus('syncing');
+      testConnection().then((connected) => {
+        setCloudSyncStatus(connected ? 'synced' : 'offline');
+      });
+    };
+    const handleOffline = () => {
+      setCloudSyncStatus('offline');
+    };
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
     return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
       unsubs.forEach((unsub) => {
         try {
           unsub();
@@ -956,6 +1138,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setBarbers((prev) => {
       const next = prev.filter((b) => b.id !== id);
       if (currentShopId) {
+        markIdDeleted(currentShopId, id);
         const keys = getTenantStorageKeys(currentShopId);
         localStorage.setItem(keys.BARBERS, JSON.stringify(next));
         deleteDocumentFromCloud(currentShopId, 'barbers', id).catch(console.error);
@@ -1008,6 +1191,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setProducts((prev) => {
       const next = prev.filter((p) => p.id !== id);
       if (currentShopId) {
+        markIdDeleted(currentShopId, id);
         const keys = getTenantStorageKeys(currentShopId);
         localStorage.setItem(keys.PRODUCTS, JSON.stringify(next));
         deleteDocumentFromCloud(currentShopId, 'products', id).catch(console.error);
@@ -1177,9 +1361,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       });
     } catch {}
 
-    const headText = (newBill.headCount && newBill.headCount > 0)
-      ? ` (${newBill.headCount} หัว)`
-      : (newBill.haircutFee === 0 ? ' (ซื้อสินค้า • ไม่นับหัว 🛍️)' : '');
+    const headText = newBill.headCount && newBill.headCount > 0 ? ` (${newBill.headCount} หัว)` : '';
     showToast(
       'บันทึกยอดขายสำเร็จ 🎉',
       `บิล ${billNumber} ยอด ${settings.currencySymbol}${newBill.grossTotal.toLocaleString()}${headText}`,
@@ -1248,6 +1430,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setBills((prev) => {
       const next = prev.filter((b) => b.id !== id);
       if (currentShopId) {
+        markIdDeleted(currentShopId, id);
         const keys = getTenantStorageKeys(currentShopId);
         localStorage.setItem(keys.BILLS, JSON.stringify(next));
         deleteDocumentFromCloud(currentShopId, 'bills', id).catch(console.error);
@@ -1412,6 +1595,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setExpenses((prev) => {
       const next = prev.filter((e) => e.id !== id);
       if (currentShopId) {
+        markIdDeleted(currentShopId, id);
         const keys = getTenantStorageKeys(currentShopId);
         localStorage.setItem(keys.EXPENSES, JSON.stringify(next));
         deleteDocumentFromCloud(currentShopId, 'expenses', id).catch(console.error);
@@ -1504,6 +1688,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setQueues((prev) => {
       const next = prev.filter((q) => q.id !== id);
       if (currentShopId) {
+        markIdDeleted(currentShopId, id);
         const keys = getTenantStorageKeys(currentShopId);
         localStorage.setItem(keys.QUEUES, JSON.stringify(next));
         deleteDocumentFromCloud(currentShopId, 'queues', id).catch(console.error);
@@ -1663,6 +1848,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   const resetAllDataToSample = () => {
     if (currentShopId) {
+      clearDeletedIds(currentShopId);
       const keys = getTenantStorageKeys(currentShopId);
       localStorage.removeItem(keys.SETTINGS);
       localStorage.removeItem(keys.BARBERS);
@@ -1679,6 +1865,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setExpenses(INITIAL_EXPENSES);
     setQueues(INITIAL_QUEUES);
 
+    if (currentShopId && currentUserEmail) {
+      saveShopSettingsToCloud(currentShopId, currentUserEmail, INITIAL_SETTINGS).catch(console.error);
+      INITIAL_BARBERS.forEach((b) => saveDocumentToCloud(currentShopId, 'barbers', b).catch(console.error));
+      INITIAL_PRODUCTS.forEach((p) => saveDocumentToCloud(currentShopId, 'products', p).catch(console.error));
+    }
+
     sounds.playSuccess();
     closeConfirm();
     showToast('รีเซ็ตข้อมูลตัวอย่างสำเร็จ', 'ข้อมูลระบบถูกรีเซ็ตเป็นชุดเริ่มต้นพร้อมใช้งานเรียบร้อย 🔄', 'success', '✨');
@@ -1686,6 +1878,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   const factoryReset = () => {
     if (currentShopId) {
+      clearDeletedIds(currentShopId);
       const keys = getTenantStorageKeys(currentShopId);
       localStorage.removeItem(keys.SETTINGS);
       localStorage.removeItem(keys.BARBERS);

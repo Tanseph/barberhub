@@ -315,8 +315,12 @@ export const TabPOS: React.FC = () => {
 
     let finalTimestamp = Date.now();
     try {
-      const parsed = new Date(`${dateStr}T${timeStr.replace('.', ':')}:00`).getTime();
-      if (!isNaN(parsed)) {
+      const cleanTime = timeStr.replace('.', ':');
+      const timeParts = cleanTime.split(':');
+      const padH = String(parseInt(timeParts[0] || '0', 10)).padStart(2, '0');
+      const padM = String(parseInt(timeParts[1] || '0', 10)).padStart(2, '0');
+      const parsed = new Date(`${dateStr}T${padH}:${padM}:00`).getTime();
+      if (!isNaN(parsed) && parsed > 0) {
         finalTimestamp = parsed;
       }
     } catch {}
@@ -532,28 +536,6 @@ export const TabPOS: React.FC = () => {
                   <Receipt className="w-3.5 h-3.5 text-amber-500" />
                   <span>ค่าบริการ & ทิป</span>
                 </h3>
-                <div className="flex items-center gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      sounds.playClick();
-                      setHaircutFee('');
-                      setHeadCount(0);
-                    }}
-                    className={`text-[10px] sm:text-[11px] font-bold px-2 py-0.5 rounded-lg border transition-all ${
-                      numHaircut === 0
-                        ? 'bg-amber-500/20 text-amber-500 border-amber-500/40'
-                        : isDark
-                        ? 'bg-zinc-800 text-zinc-300 border-zinc-700 hover:text-white'
-                        : 'bg-slate-100 text-slate-700 border-slate-300 hover:text-slate-900'
-                    }`}
-                  >
-                    🛒 ซื้อสินค้าอย่างเดียว (0 หัว)
-                  </button>
-                  <span className="text-[10px] font-medium text-amber-600/90 dark:text-amber-400/90 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/20 hidden sm:inline">
-                    ✨ ทิปช่าง 100%
-                  </span>
-                </div>
               </div>
 
               <div className="grid grid-cols-3 gap-2 sm:gap-2.5">
@@ -587,7 +569,7 @@ export const TabPOS: React.FC = () => {
                   </div>
 
                   {/* Head count control */}
-                  {numHaircut > 0 ? (
+                  {numHaircut > 0 && (
                     <div className="mt-1.5 pt-1 border-t border-dashed border-zinc-800/80 flex items-center justify-between text-[10px]">
                       <span className="text-zinc-400 font-medium">จำนวน:</span>
                       <div className="flex items-center gap-1">
@@ -611,10 +593,6 @@ export const TabPOS: React.FC = () => {
                           </button>
                         ))}
                       </div>
-                    </div>
-                  ) : (
-                    <div className="mt-1.5 pt-1 border-t border-dashed border-zinc-800/80 text-[10px] text-amber-500 font-medium truncate">
-                      🛒 0 หัว (ไม่นับหัว)
                     </div>
                   )}
                 </div>
@@ -1089,26 +1067,18 @@ export const TabPOS: React.FC = () => {
                   {numTip > 0 && <span className="text-amber-500 font-bold">• ทิป ฿{numTip.toLocaleString()}</span>}
                 </div>
 
-                {/* Haircut head count vs Product only badge */}
-                <div className="pt-0.5">
-                  {numHaircut > 0 ? (
+                {/* Haircut head count badge */}
+                {numHaircut > 0 && (
+                  <div className="pt-0.5">
                     <div className="flex items-center justify-between text-[11px] px-2.5 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 font-semibold">
                       <span className="flex items-center gap-1">
                         <Scissors className="w-3 h-3" />
                         <span>บริการตัดผม</span>
                       </span>
-                      <span className="font-mono font-bold">{Math.max(1, headCount)} หัว (นับสถิติ {Math.max(1, headCount)} หัว)</span>
+                      <span className="font-mono font-bold">{Math.max(1, headCount)} หัว</span>
                     </div>
-                  ) : (
-                    <div className="flex items-center justify-between text-[11px] px-2.5 py-1 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400 font-semibold">
-                      <span className="flex items-center gap-1">
-                        <ShoppingBag className="w-3 h-3" />
-                        <span>{totalProductsFee > 0 ? 'ซื้อสินค้าอย่างเดียว' : 'ไม่มีบริการตัดผม'}</span>
-                      </span>
-                      <span className="font-bold font-mono">0 หัว (ไม่นับจำนวนหัว)</span>
-                    </div>
-                  )}
-                </div>
+                  </div>
+                )}
 
                 {/* Commission Transparency Box */}
                 <div className={`text-[11px] font-medium p-2 rounded-xl border flex items-center justify-between gap-2 ${

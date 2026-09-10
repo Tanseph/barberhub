@@ -149,16 +149,26 @@ export const Header: React.FC = () => {
               <div
                 className={`w-2 h-2 rounded-full ${
                   cloudSyncStatus === 'synced'
-                    ? 'bg-emerald-500'
+                    ? 'bg-emerald-500 shadow-xs shadow-emerald-500/50'
                     : cloudSyncStatus === 'syncing'
-                    ? 'bg-amber-500 animate-spin'
+                    ? 'bg-amber-500 animate-pulse'
                     : 'bg-zinc-400'
                 }`}
-                title={cloudSyncStatus === 'synced' ? 'ซิงก์ Cloud แล้ว' : 'กำลังซิงก์...'}
+                title={
+                  cloudSyncStatus === 'synced'
+                    ? 'Cloud เชื่อมต่อแล้ว (ข้อมูลปลอดภัย)'
+                    : cloudSyncStatus === 'syncing'
+                    ? 'กำลังเชื่อมต่อและซิงก์ข้อมูล...'
+                    : 'โหมดออฟไลน์ (ข้อมูลบันทึกในเครื่องปลอดภัย)'
+                }
               />
               <Cloud className="w-3.5 h-3.5 text-sky-500" />
               <span className="hidden sm:inline text-[11px] font-medium">
-                {cloudSyncStatus === 'synced' ? 'Cloud Connected' : 'Syncing...'}
+                {cloudSyncStatus === 'synced'
+                  ? 'Cloud เชื่อมต่อแล้ว'
+                  : cloudSyncStatus === 'syncing'
+                  ? 'กำลังซิงก์...'
+                  : 'ออฟไลน์ (บันทึกลงเครื่อง)'}
               </span>
             </div>
           </div>
