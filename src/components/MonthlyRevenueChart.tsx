@@ -34,6 +34,7 @@ import {
   filterBillsByBillingCycle,
   filterExpensesByBillingCycle,
 } from '../utils/billingCycle';
+import { groupBillsForDisplay } from '../utils/billGrouping';
 
 interface MonthlyRevenueChartProps {
   bills: SaleBill[];
@@ -143,7 +144,7 @@ export const MonthlyRevenueChart: React.FC<MonthlyRevenueChartProps> = ({
         haircut,
         chemical,
         product,
-        billCount: dayBills.length,
+        billCount: groupBillsForDisplay(dayBills).length,
       };
     });
   }, [billsByDate, expensesByDate, billingCycleInfo]);
@@ -196,7 +197,7 @@ export const MonthlyRevenueChart: React.FC<MonthlyRevenueChartProps> = ({
         expenseAmount,
         transfer,
         cash,
-        billsCount: monthBills.length,
+        billsCount: groupBillsForDisplay(monthBills).length,
         isCurrent: mKey === selectedMonth,
       });
     }

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
-import { SaleBill } from '../types';
-import { X, Link2, Unlink, Check, CheckSquare, Square, Users, Receipt, AlertCircle } from 'lucide-react';
+import { SaleBill, PaymentMethod } from '../types';
+import { X, Link2, Unlink, Check, CheckSquare, Square, Users, Receipt, AlertCircle, CreditCard, Banknote } from 'lucide-react';
 
 interface ModalMergeBillsProps {
   isOpen: boolean;
@@ -30,6 +30,7 @@ export const ModalMergeBills: React.FC<ModalMergeBillsProps> = ({
   const [selectedBillIds, setSelectedBillIds] = useState<string[]>([]);
   const [customGroupName, setCustomGroupName] = useState<string>('');
   const [primaryBillId, setPrimaryBillId] = useState<string>('');
+  const [mergedPaymentMethod, setMergedPaymentMethod] = useState<PaymentMethod>('transfer');
 
   // Initial load
   useEffect(() => {
@@ -43,6 +44,9 @@ export const ModalMergeBills: React.FC<ModalMergeBillsProps> = ({
       const master = groupBills.find((b) => b.isMergeMaster) || groupBills[0];
       setPrimaryBillId(master?.id || ids[0] || '');
       setCustomGroupName(master?.mergedGroupName || `${ids.length} รายการนี้ รวมกัน`);
+      if (master?.paymentMethod) {
+        setMergedPaymentMethod(master.paymentMethod);
+      }
     } else if (initialSelectedBillId) {
       const initialBill = dayBills.find((b) => b.id === initialSelectedBillId);
       if (initialBill?.mergedGroupId) {
@@ -53,8 +57,11 @@ export const ModalMergeBills: React.FC<ModalMergeBillsProps> = ({
         const master = groupBills.find((b) => b.isMergeMaster) || groupBills[0];
         setPrimaryBillId(master?.id || ids[0] || '');
         setCustomGroupName(master?.mergedGroupName || `${ids.length} รายการนี้ รวมกัน`);
+        if (master?.paymentMethod) {
+          setMergedPaymentMethod(master.paymentMethod);
+        }
       } else {
-        // Start fresh with this bill and others with matching customer name if any
+        // Start fresh with this bill
         setSelectedBillIds([initialSelectedBillId]);
         setPrimaryBillId(initialSelectedBillId);
         setCustomGroupName(
@@ -62,11 +69,15 @@ export const ModalMergeBills: React.FC<ModalMergeBillsProps> = ({
             ? `รวมชำระ (${initialBill.customerName})`
             : 'รายการนี้ รวมกัน'
         );
+        if (initialBill?.paymentMethod) {
+          setMergedPaymentMethod(initialBill.paymentMethod);
+        }
       }
     } else {
       setSelectedBillIds([]);
       setPrimaryBillId('');
       setCustomGroupName('');
+      setMergedPaymentMethod('transfer');
     }
   }, [isOpen, initialGroupId, initialSelectedBillId, dayBills]);
 
@@ -81,7 +92,6 @@ export const ModalMergeBills: React.FC<ModalMergeBillsProps> = ({
         next = [...prev, id];
       }
 
-      // Update default group name if user hasn't typed a custom one
       if (next.length > 0) {
         if (!primaryBillId || !next.includes(primaryBillId)) {
           setPrimaryBillId(next[0]);
@@ -104,7 +114,7 @@ export const ModalMergeBills: React.FC<ModalMergeBillsProps> = ({
     if (selectedBillIds.length < 2) return;
 
     const label = customGroupName.trim() || `${selectedBillIds.length} รายการนี้ รวมกัน`;
-    mergeSaleBills(selectedBillIds, label, primaryBillId || selectedBillIds[0]);
+    mergeSaleBills(selectedBillIds, label, primaryBillId || selectedBillIds[0], mergedPaymentMethod);
     onClose();
   };
 
@@ -173,8 +183,7 @@ export const ModalMergeBills: React.FC<ModalMergeBillsProps> = ({
           >
             <AlertCircle className="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" />
             <div className="leading-relaxed">
-              <strong>ระบบรวมบิล:</strong> ยังคงแสดงทุกรายการบิลแยกกันในหน้าสรุปยอดบิลตามเดิม
-              แต่จะมีป้ายกำกับข้อความระบุชัดเจนว่า <strong>"3 รายการนี้ รวมกัน"</strong> และแสดงยอดรวมชำระร่วมกัน
+              <strong>ระบบรวมบิล (Combined Billing):</strong> รวมรายการบิลที่เลือกเข้าเป็นชุดเดียวกัน และแสดงผลสรุปยอดชำระรวม (Grand Total) ก้อนเดียวในตารางบันทึกบิล พร้อมทั้งสามารถพิมพ์ใบเสร็จรวมยอดเดียวได้
             </div>
           </div>
 
@@ -187,9 +196,60 @@ export const ModalMergeBills: React.FC<ModalMergeBillsProps> = ({
               type="text"
               value={customGroupName}
               onChange={(e) => setCustomGroupName(e.target.value)}
-              placeholder={`เช่น "${selectedBillIds.length || 3} รายการนี้ รวมกัน" หรือ "รวมชำระ 3 ท่าน (คุณภัทรเดช)"`}
+              placeholder={`เช่น "${selectedBillIds.length || 2} รายการนี้ รวมกัน" หรือ "รวมชำระ 2 ท่าน (คุณภัทรเดช)"`}
               className={inputClass}
             />
+          </div>
+
+          {/* Payment Method Selector */}
+          <div>
+            <label className={`block text-xs font-semibold ${headingText} mb-1.5`}>
+              ช่องทางชำระเงินสำหรับบิลรวมนี้
+            </label>
+            <div className="grid grid-cols-3 gap-2">
+              <button
+                type="button"
+                onClick={() => setMergedPaymentMethod('transfer')}
+                className={`py-2 px-3 rounded-xl border text-xs font-semibold flex items-center justify-center gap-1.5 transition-all ${
+                  mergedPaymentMethod === 'transfer'
+                    ? 'bg-sky-500 text-white border-sky-600 shadow-xs'
+                    : isDark
+                    ? 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:border-zinc-700'
+                    : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                }`}
+              >
+                <span>📱</span>
+                <span>เงินโอน</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setMergedPaymentMethod('cash')}
+                className={`py-2 px-3 rounded-xl border text-xs font-semibold flex items-center justify-center gap-1.5 transition-all ${
+                  mergedPaymentMethod === 'cash'
+                    ? 'bg-emerald-500 text-white border-emerald-600 shadow-xs'
+                    : isDark
+                    ? 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:border-zinc-700'
+                    : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                }`}
+              >
+                <span>💵</span>
+                <span>เงินสด</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setMergedPaymentMethod('split')}
+                className={`py-2 px-3 rounded-xl border text-xs font-semibold flex items-center justify-center gap-1.5 transition-all ${
+                  mergedPaymentMethod === 'split'
+                    ? 'bg-purple-500 text-white border-purple-600 shadow-xs'
+                    : isDark
+                    ? 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:border-zinc-700'
+                    : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                }`}
+              >
+                <span>🔀</span>
+                <span>สด + โอน</span>
+              </button>
+            </div>
           </div>
 
           {/* Bill Selection List */}

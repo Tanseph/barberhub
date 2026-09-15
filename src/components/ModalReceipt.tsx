@@ -1,16 +1,39 @@
-import React, { useRef } from 'react';
+import React, { useRef, useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
-import { X, Printer, Share2, Scissors, Check } from 'lucide-react';
+import { X, Printer, Share2, Scissors, Check, Layers, User } from 'lucide-react';
 
 export const ModalReceipt: React.FC = () => {
-  const { selectedBillForReceipt, closeReceiptModal, settings, showToast, theme } = useApp();
+  const { selectedBillForReceipt, closeReceiptModal, settings, showToast, theme, bills } = useApp();
   const printRef = useRef<HTMLDivElement>(null);
   const [copied, setCopied] = React.useState(false);
   const isDark = theme.isDark ?? true;
 
+  // Check if selected bill belongs to a merged group
+  const mergedGroupBills = useMemo(() => {
+    if (!selectedBillForReceipt?.mergedGroupId) return [];
+    return bills.filter((b) => b.mergedGroupId === selectedBillForReceipt.mergedGroupId);
+  }, [selectedBillForReceipt, bills]);
+
+  const isMerged = mergedGroupBills.length > 1;
+  const [receiptMode, setReceiptMode] = useState<'combined' | 'single'>('combined');
+
   if (!selectedBillForReceipt) return null;
 
   const bill = selectedBillForReceipt;
+  const showCombined = isMerged && receiptMode === 'combined';
+
+  // Combined totals
+  const combinedGrossTotal = mergedGroupBills.reduce((s, b) => s + b.grossTotal, 0);
+  const combinedTotalDiscount = mergedGroupBills.reduce((s, b) => s + (b.totalDiscountAmount || 0), 0);
+  const combinedSubtotalBefore = mergedGroupBills.reduce(
+    (s, b) => s + (b.subtotalBeforeDiscount || (b.grossTotal + (b.totalDiscountAmount || 0))),
+    0
+  );
+  const combinedCash = mergedGroupBills.reduce((s, b) => s + b.cashAmount, 0);
+  const combinedTransfer = mergedGroupBills.reduce((s, b) => s + b.transferAmount, 0);
+  const allSamePayment = mergedGroupBills.every((b) => b.paymentMethod === mergedGroupBills[0]?.paymentMethod);
+  const combinedPaymentMethod = allSamePayment ? mergedGroupBills[0]?.paymentMethod : 'split';
+  const groupLabel = bill.mergedGroupName || `รวมชำระ ${mergedGroupBills.length} รายการ`;
 
   const handlePrint = () => {
     try {
@@ -21,31 +44,77 @@ export const ModalReceipt: React.FC = () => {
   };
 
   const handleCopySummary = () => {
-    const text = `💈 ${settings.shopName} 💈
+    let text = '';
+    if (showCombined) {
+      text = `💈 ${settings.shopName} 💈
+🧾 ใบเสร็จรับเงิน (บิลรวม: ${groupLabel})
+เลขที่บิล: ${mergedGroupBills.map((b) => b.billNumber).join(', ')}
+วันที่: ${bill.dateStr} เวลา: ${bill.timeStr} น.
+-------------------------
+${mergedGroupBills
+  .map((b, idx) => {
+    const services = [
+      b.haircutFee > 0 ? `  - ตัดผม: ${settings.currencySymbol}${b.haircutFee.toLocaleString()}` : '',
+      b.hasHaircutDiscount10 && (b.haircutDiscountAmount || 0) > 0
+        ? `  - ส่วนลดตัดผม 10%: -${settings.currencySymbol}${(b.haircutDiscountAmount || 0).toLocaleString()}`
+        : '',
+      b.chemicalFee > 0 ? `  - เคมี: ${settings.currencySymbol}${b.chemicalFee.toLocaleString()}` : '',
+      ...b.products.map(
+        (p) => `  - ${p.name} x${p.quantity}: ${settings.currencySymbol}${p.total.toLocaleString()}`
+      ),
+      (b.voucherDiscountAmount || 0) > 0
+        ? `  - Voucher: -${settings.currencySymbol}${(b.voucherDiscountAmount || 0).toLocaleString()}`
+        : '',
+      b.tipFee > 0 ? `  - ทิป: ${settings.currencySymbol}${b.tipFee.toLocaleString()}` : '',
+    ]
+      .filter(Boolean)
+      .join('\n');
+
+    return `👤 [${idx + 1}] ${b.customerName} (ช่าง${b.barberName}) - ${settings.currencySymbol}${b.grossTotal.toLocaleString()}\n${services}`;
+  })
+  .join('\n\n')}
+-------------------------
+${combinedTotalDiscount > 0 ? `ยอดรวมก่อนลด: ${settings.currencySymbol}${combinedSubtotalBefore.toLocaleString()}\nส่วนลดรวม: -${settings.currencySymbol}${combinedTotalDiscount.toLocaleString()}\n` : ''}💰 ยอดรวมสุทธิที่ชำระ: ${settings.currencySymbol}${combinedGrossTotal.toLocaleString()}
+ชำระโดย: ${
+        combinedPaymentMethod === 'transfer'
+          ? 'เงินโอน 📱'
+          : combinedPaymentMethod === 'cash'
+          ? 'เงินสด 💵'
+          : `สลับ (สด ${settings.currencySymbol}${combinedCash} / โอน ${settings.currencySymbol}${combinedTransfer})`
+      }${settings.receiptFooterMsg ? `\n-------------------------\n${settings.receiptFooterMsg}` : ''}`;
+    } else {
+      text = `💈 ${settings.shopName} 💈
 ใบเสร็จเลขที่: ${bill.billNumber}
 วันที่: ${bill.dateStr} เวลา: ${bill.timeStr}
 ช่าง: ${bill.barberName}
 ลูกค้า: ${bill.customerName}
 -------------------------
 ${bill.haircutFee > 0 ? `ค่าตัดผม: ${settings.currencySymbol}${bill.haircutFee.toLocaleString()}\n` : ''}${
-      bill.hasHaircutDiscount10 && (bill.haircutDiscountAmount || 0) > 0 ? `ส่วนลดตัดผม 10%: -${settings.currencySymbol}${(bill.haircutDiscountAmount || 0).toLocaleString()}\n` : ''
-    }${
-      bill.chemicalFee > 0 ? `ค่าเคมี: ${settings.currencySymbol}${bill.chemicalFee.toLocaleString()}\n` : ''
-    }${
-      bill.products.length > 0
-        ? `สินค้า:\n${bill.products.map((p) => ` - ${p.name} x${p.quantity}: ${settings.currencySymbol}${p.total.toLocaleString()}`).join('\n')}\n`
-        : ''
-    }${
-      (bill.voucherDiscountAmount || 0) > 0 ? `Gift Voucher${bill.voucherCode ? ` (${bill.voucherCode})` : ''}: -${settings.currencySymbol}${(bill.voucherDiscountAmount || 0).toLocaleString()}\n` : ''
-    }${bill.tipFee > 0 ? `ทิป: ${settings.currencySymbol}${bill.tipFee.toLocaleString()}\n` : ''}-------------------------
-${(bill.totalDiscountAmount || 0) > 0 ? `ยอดรวมก่อนลด: ${settings.currencySymbol}${(bill.subtotalBeforeDiscount || (bill.grossTotal + (bill.totalDiscountAmount || 0))).toLocaleString()}\nส่วนลดรวม: -${settings.currencySymbol}${(bill.totalDiscountAmount || 0).toLocaleString()}\n` : ''}ยอดรวมสุทธิ: ${settings.currencySymbol}${bill.grossTotal.toLocaleString()}
+        bill.hasHaircutDiscount10 && (bill.haircutDiscountAmount || 0) > 0
+          ? `ส่วนลดตัดผม 10%: -${settings.currencySymbol}${(bill.haircutDiscountAmount || 0).toLocaleString()}\n`
+          : ''
+      }${
+        bill.chemicalFee > 0
+          ? `ค่าเคมี: ${settings.currencySymbol}${bill.chemicalFee.toLocaleString()}\n`
+          : ''
+      }${
+        bill.products.length > 0
+          ? `สินค้า:\n${bill.products.map((p) => ` - ${p.name} x${p.quantity}: ${settings.currencySymbol}${p.total.toLocaleString()}`).join('\n')}\n`
+          : ''
+      }${
+        (bill.voucherDiscountAmount || 0) > 0
+          ? `Gift Voucher${bill.voucherCode ? ` (${bill.voucherCode})` : ''}: -${settings.currencySymbol}${(bill.voucherDiscountAmount || 0).toLocaleString()}\n`
+          : ''
+      }${bill.tipFee > 0 ? `ทิป: ${settings.currencySymbol}${bill.tipFee.toLocaleString()}\n` : ''}-------------------------
+${(bill.totalDiscountAmount || 0) > 0 ? `ยอดรวมก่อนลด: ${settings.currencySymbol}${(bill.subtotalBeforeDiscount || bill.grossTotal + (bill.totalDiscountAmount || 0)).toLocaleString()}\nส่วนลดรวม: -${settings.currencySymbol}${(bill.totalDiscountAmount || 0).toLocaleString()}\n` : ''}ยอดรวมสุทธิ: ${settings.currencySymbol}${bill.grossTotal.toLocaleString()}
 ชำระโดย: ${
-      bill.paymentMethod === 'transfer'
-        ? 'เงินโอน 📱'
-        : bill.paymentMethod === 'cash'
-        ? 'เงินสด 💵'
-        : `สลับ (สด ${settings.currencySymbol}${bill.cashAmount} / โอน ${settings.currencySymbol}${bill.transferAmount})`
-    }${settings.receiptFooterMsg ? `\n-------------------------\n${settings.receiptFooterMsg}` : ''}`;
+        bill.paymentMethod === 'transfer'
+          ? 'เงินโอน 📱'
+          : bill.paymentMethod === 'cash'
+          ? 'เงินสด 💵'
+          : `สลับ (สด ${settings.currencySymbol}${bill.cashAmount} / โอน ${settings.currencySymbol}${bill.transferAmount})`
+      }${settings.receiptFooterMsg ? `\n-------------------------\n${settings.receiptFooterMsg}` : ''}`;
+    }
 
     try {
       if (navigator?.clipboard?.writeText) {
@@ -93,13 +162,17 @@ ${(bill.totalDiscountAmount || 0) > 0 ? `ยอดรวมก่อนลด: $
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs overflow-y-auto">
-      <div className={`rounded-2xl max-w-md w-full shadow-2xl overflow-hidden my-6 border ${
-        isDark ? 'bg-zinc-900 border-zinc-700/80' : 'bg-white border-slate-200'
-      }`}>
+      <div
+        className={`rounded-2xl max-w-md w-full shadow-2xl overflow-hidden my-6 border ${
+          isDark ? 'bg-zinc-900 border-zinc-700/80' : 'bg-white border-slate-200'
+        }`}
+      >
         {/* Header bar */}
-        <div className={`flex items-center justify-between px-5 py-4 border-b ${
-          isDark ? 'border-zinc-800 bg-zinc-950/60' : 'border-slate-200 bg-slate-50'
-        }`}>
+        <div
+          className={`flex items-center justify-between px-5 py-4 border-b ${
+            isDark ? 'border-zinc-800 bg-zinc-950/60' : 'border-slate-200 bg-slate-50'
+          }`}
+        >
           <div className={`flex items-center gap-2 font-semibold text-sm ${headingText}`}>
             <Scissors className="w-4 h-4 text-amber-600" />
             <span>ใบเสร็จรับเงิน / สลิปดิจิทัล</span>
@@ -107,17 +180,60 @@ ${(bill.totalDiscountAmount || 0) > 0 ? `ยอดรวมก่อนลด: $
           <button
             onClick={closeReceiptModal}
             className={`p-1 rounded-lg transition-colors ${
-              isDark ? 'text-zinc-400 hover:text-white hover:bg-zinc-800' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-200'
+              isDark
+                ? 'text-zinc-400 hover:text-white hover:bg-zinc-800'
+                : 'text-slate-500 hover:text-slate-900 hover:bg-slate-200'
             }`}
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
+        {/* Merged Bill Switcher (if this bill is part of a group) */}
+        {isMerged && (
+          <div className={`px-5 py-2.5 border-b flex items-center gap-2 ${
+            isDark ? 'bg-zinc-950 border-zinc-800' : 'bg-indigo-50/70 border-indigo-100'
+          }`}>
+            <span className="text-[11px] font-semibold text-indigo-500 shrink-0">รูปแบบ:</span>
+            <div className="flex-1 grid grid-cols-2 gap-1.5">
+              <button
+                type="button"
+                onClick={() => setReceiptMode('combined')}
+                className={`py-1 px-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                  receiptMode === 'combined'
+                    ? 'bg-indigo-600 text-white shadow-xs'
+                    : isDark
+                    ? 'bg-zinc-800 text-zinc-400 hover:text-zinc-200'
+                    : 'bg-white text-slate-600 hover:bg-slate-100'
+                }`}
+              >
+                <Layers className="w-3.5 h-3.5" />
+                <span>รวม {mergedGroupBills.length} บิล ({settings.currencySymbol}{combinedGrossTotal.toLocaleString()})</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setReceiptMode('single')}
+                className={`py-1 px-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                  receiptMode === 'single'
+                    ? 'bg-indigo-600 text-white shadow-xs'
+                    : isDark
+                    ? 'bg-zinc-800 text-zinc-400 hover:text-zinc-200'
+                    : 'bg-white text-slate-600 hover:bg-slate-100'
+                }`}
+              >
+                <User className="w-3.5 h-3.5" />
+                <span>เฉพาะบิลนี้ ({settings.currencySymbol}{bill.grossTotal.toLocaleString()})</span>
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Printable Receipt Paper Body */}
-        <div className={`p-6 overflow-y-auto max-h-[70vh] ${
-          isDark ? 'bg-zinc-900' : 'bg-slate-100'
-        }`}>
+        <div
+          className={`p-6 overflow-y-auto max-h-[70vh] ${
+            isDark ? 'bg-zinc-900' : 'bg-slate-100'
+          }`}
+        >
           <div
             ref={printRef}
             className="bg-white text-slate-900 p-6 rounded-xl border border-slate-200 shadow-xs font-mono text-sm leading-relaxed"
@@ -147,109 +263,252 @@ ${(bill.totalDiscountAmount || 0) > 0 ? `ยอดรวมก่อนลด: $
             {/* Bill Meta */}
             <div className="py-3 border-b border-dashed border-slate-300 text-xs text-slate-600 space-y-1">
               <div className="flex justify-between">
-                <span>เลขที่บิล:</span>
-                <span className="font-bold text-slate-900">{bill.billNumber}</span>
+                <span>{showCombined ? 'เลขที่บิลรวม:' : 'เลขที่บิล:'}</span>
+                <span className="font-bold text-slate-900">
+                  {showCombined ? mergedGroupBills.map((b) => b.billNumber).join(', ') : bill.billNumber}
+                </span>
               </div>
               <div className="flex justify-between">
                 <span>วันที่-เวลา:</span>
-                <span>{bill.dateStr} | {bill.timeStr} น.</span>
+                <span>
+                  {bill.dateStr} | {bill.timeStr} น.
+                </span>
               </div>
-              <div className="flex justify-between">
-                <span>ช่างผู้ให้บริการ:</span>
-                <span className="font-semibold text-slate-900">{bill.barberName}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>คุณลูกค้า:</span>
-                <span className="font-semibold text-slate-900">{bill.customerName}</span>
-              </div>
-              {bill.mergedGroupId && (
-                <div className="flex justify-between text-indigo-700 font-bold bg-indigo-50 px-2 py-0.5 rounded">
-                  <span>สถานะการรวมบิล:</span>
-                  <span>{bill.mergedGroupName || `${bill.mergedBillCount || 3} รายการนี้ รวมกัน`}</span>
-                </div>
+
+              {showCombined ? (
+                <>
+                  <div className="flex justify-between text-indigo-700 font-bold bg-indigo-50 px-2 py-0.5 rounded">
+                    <span>กลุ่มบิลรวม:</span>
+                    <span>{groupLabel}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>ผู้รับบริการทั้งหมด ({mergedGroupBills.length} ท่าน):</span>
+                    <span className="font-semibold text-slate-900">
+                      {mergedGroupBills.map((b) => b.customerName).join(', ')}
+                    </span>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="flex justify-between">
+                    <span>ช่างผู้ให้บริการ:</span>
+                    <span className="font-semibold text-slate-900">{bill.barberName}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>คุณลูกค้า:</span>
+                    <span className="font-semibold text-slate-900">{bill.customerName}</span>
+                  </div>
+                  {bill.mergedGroupId && (
+                    <div className="flex justify-between text-indigo-700 font-bold bg-indigo-50 px-2 py-0.5 rounded">
+                      <span>สถานะการรวมบิล:</span>
+                      <span>{bill.mergedGroupName || `${mergedGroupBills.length} รายการนี้ รวมกัน`}</span>
+                    </div>
+                  )}
+                </>
               )}
             </div>
 
             {/* Line Items */}
             <div className="py-3 border-b border-dashed border-slate-300 space-y-2 text-xs">
               <div className="flex justify-between font-bold text-slate-700 pb-1 border-b border-slate-100">
-                <span>รายการ</span>
+                <span>รายการบริการ</span>
                 <span>จำนวนเงิน</span>
               </div>
 
-              {bill.haircutFee > 0 && (
-                <div className="flex justify-between">
-                  <span>ค่าบริการตัดผม</span>
-                  <span className="font-medium">{settings.currencySymbol}{bill.haircutFee.toLocaleString()}</span>
-                </div>
-              )}
+              {showCombined ? (
+                /* Itemized breakdown per person for combined bill */
+                mergedGroupBills.map((gb, gIdx) => (
+                  <div key={gb.id} className="pt-1.5 pb-2 border-b border-slate-100 last:border-b-0 space-y-1">
+                    <div className="flex justify-between font-bold text-indigo-900 bg-slate-50 px-1.5 py-0.5 rounded">
+                      <span>
+                        👤 [{gIdx + 1}] {gb.customerName} <span className="text-[11px] text-slate-500 font-normal">(ช่าง{gb.barberName})</span>
+                      </span>
+                      <span className="font-mono">{settings.currencySymbol}{gb.grossTotal.toLocaleString()}</span>
+                    </div>
 
-              {bill.hasHaircutDiscount10 && (bill.haircutDiscountAmount || 0) > 0 && (
-                <div className="flex justify-between text-emerald-700 font-semibold">
-                  <span>✂️ ส่วนลดโปรโมชั่นตัดผม 10%</span>
-                  <span>-{settings.currencySymbol}{(bill.haircutDiscountAmount || 0).toLocaleString()}</span>
-                </div>
-              )}
+                    {gb.haircutFee > 0 && (
+                      <div className="flex justify-between pl-2 text-slate-600">
+                        <span>• ตัดผม</span>
+                        <span className="font-mono">{settings.currencySymbol}{gb.haircutFee.toLocaleString()}</span>
+                      </div>
+                    )}
+                    {gb.hasHaircutDiscount10 && (gb.haircutDiscountAmount || 0) > 0 && (
+                      <div className="flex justify-between pl-2 text-emerald-700 font-semibold">
+                        <span>• ส่วนลดตัดผม 10%</span>
+                        <span className="font-mono">-{settings.currencySymbol}{(gb.haircutDiscountAmount || 0).toLocaleString()}</span>
+                      </div>
+                    )}
+                    {gb.chemicalFee > 0 && (
+                      <div className="flex justify-between pl-2 text-slate-600">
+                        <span>• เคมี / ทรีทเม้นท์</span>
+                        <span className="font-mono">{settings.currencySymbol}{gb.chemicalFee.toLocaleString()}</span>
+                      </div>
+                    )}
+                    {gb.products.map((item, pIdx) => (
+                      <div key={pIdx} className="flex justify-between pl-2 text-slate-600">
+                        <span>• {item.name} x{item.quantity}</span>
+                        <span className="font-mono">{settings.currencySymbol}{item.total.toLocaleString()}</span>
+                      </div>
+                    ))}
+                    {(gb.voucherDiscountAmount || 0) > 0 && (
+                      <div className="flex justify-between pl-2 text-indigo-700 font-semibold">
+                        <span>• Gift Voucher</span>
+                        <span className="font-mono">-{settings.currencySymbol}{(gb.voucherDiscountAmount || 0).toLocaleString()}</span>
+                      </div>
+                    )}
+                    {gb.tipFee > 0 && (
+                      <div className="flex justify-between pl-2 text-amber-700">
+                        <span>• ทิปพิเศษ</span>
+                        <span className="font-mono">{settings.currencySymbol}{gb.tipFee.toLocaleString()}</span>
+                      </div>
+                    )}
+                  </div>
+                ))
+              ) : (
+                /* Single bill items */
+                <>
+                  {bill.haircutFee > 0 && (
+                    <div className="flex justify-between">
+                      <span>ค่าบริการตัดผม</span>
+                      <span className="font-medium">
+                        {settings.currencySymbol}
+                        {bill.haircutFee.toLocaleString()}
+                      </span>
+                    </div>
+                  )}
 
-              {bill.chemicalFee > 0 && (
-                <div className="flex justify-between">
-                  <span>ค่าบริการเคมี / ทรีทเม้นท์</span>
-                  <span className="font-medium">{settings.currencySymbol}{bill.chemicalFee.toLocaleString()}</span>
-                </div>
-              )}
+                  {bill.hasHaircutDiscount10 && (bill.haircutDiscountAmount || 0) > 0 && (
+                    <div className="flex justify-between text-emerald-700 font-semibold">
+                      <span>✂️ ส่วนลดโปรโมชั่นตัดผม 10%</span>
+                      <span>
+                        -{settings.currencySymbol}
+                        {(bill.haircutDiscountAmount || 0).toLocaleString()}
+                      </span>
+                    </div>
+                  )}
 
-              {bill.products.map((item, idx) => (
-                <div key={idx} className="flex justify-between">
-                  <span className="pr-2">
-                    {item.name} <span className="text-slate-500">x{item.quantity}</span>
-                  </span>
-                  <span className="font-medium shrink-0">{settings.currencySymbol}{item.total.toLocaleString()}</span>
-                </div>
-              ))}
+                  {bill.chemicalFee > 0 && (
+                    <div className="flex justify-between">
+                      <span>ค่าบริการเคมี / ทรีทเม้นท์</span>
+                      <span className="font-medium">
+                        {settings.currencySymbol}
+                        {bill.chemicalFee.toLocaleString()}
+                      </span>
+                    </div>
+                  )}
 
-              {(bill.voucherDiscountAmount || 0) > 0 && (
-                <div className="flex justify-between text-indigo-700 font-semibold">
-                  <span>🎁 Gift Voucher {bill.voucherCode ? `(${bill.voucherCode})` : ''}</span>
-                  <span>-{settings.currencySymbol}{(bill.voucherDiscountAmount || 0).toLocaleString()}</span>
-                </div>
-              )}
+                  {bill.products.map((item, idx) => (
+                    <div key={idx} className="flex justify-between">
+                      <span className="pr-2">
+                        {item.name} <span className="text-slate-500">x{item.quantity}</span>
+                      </span>
+                      <span className="font-medium shrink-0">
+                        {settings.currencySymbol}
+                        {item.total.toLocaleString()}
+                      </span>
+                    </div>
+                  ))}
 
-              {bill.tipFee > 0 && (
-                <div className="flex justify-between text-amber-700">
-                  <span>ทิปพิเศษช่าง ⭐</span>
-                  <span className="font-medium">{settings.currencySymbol}{bill.tipFee.toLocaleString()}</span>
-                </div>
+                  {(bill.voucherDiscountAmount || 0) > 0 && (
+                    <div className="flex justify-between text-indigo-700 font-semibold">
+                      <span>🎁 Gift Voucher {bill.voucherCode ? `(${bill.voucherCode})` : ''}</span>
+                      <span>
+                        -{settings.currencySymbol}
+                        {(bill.voucherDiscountAmount || 0).toLocaleString()}
+                      </span>
+                    </div>
+                  )}
+
+                  {bill.tipFee > 0 && (
+                    <div className="flex justify-between text-amber-700">
+                      <span>ทิปพิเศษช่าง ⭐</span>
+                      <span className="font-medium">
+                        {settings.currencySymbol}
+                        {bill.tipFee.toLocaleString()}
+                      </span>
+                    </div>
+                  )}
+                </>
               )}
             </div>
 
             {/* Total Section */}
             <div className="py-3 border-b border-dashed border-slate-300 space-y-1.5 text-xs">
-              {(bill.totalDiscountAmount || 0) > 0 && (
+              {showCombined ? (
                 <>
-                  <div className="flex justify-between text-slate-500">
-                    <span>ยอดรวมก่อนลด:</span>
-                    <span>{settings.currencySymbol}{(bill.subtotalBeforeDiscount || (bill.grossTotal + (bill.totalDiscountAmount || 0))).toLocaleString()}</span>
+                  {combinedTotalDiscount > 0 && (
+                    <>
+                      <div className="flex justify-between text-slate-500">
+                        <span>ยอดรวมก่อนลด:</span>
+                        <span className="font-mono">{settings.currencySymbol}{combinedSubtotalBefore.toLocaleString()}</span>
+                      </div>
+                      <div className="flex justify-between text-emerald-700 font-semibold">
+                        <span>ส่วนลดรวม:</span>
+                        <span className="font-mono">-{settings.currencySymbol}{combinedTotalDiscount.toLocaleString()}</span>
+                      </div>
+                    </>
+                  )}
+
+                  <div className="flex justify-between text-base font-extrabold text-slate-900 pt-1">
+                    <span>ยอดรวมสุทธิที่ชำระ ({mergedGroupBills.length} บิล)</span>
+                    <span className="text-emerald-700 font-mono">
+                      {settings.currencySymbol}{combinedGrossTotal.toLocaleString()}
+                    </span>
                   </div>
-                  <div className="flex justify-between text-emerald-700 font-semibold">
-                    <span>ส่วนลดรวม (ทางร้านรับผิดชอบ):</span>
-                    <span>-{settings.currencySymbol}{(bill.totalDiscountAmount || 0).toLocaleString()}</span>
+
+                  <div className="flex justify-between text-slate-600 pt-1">
+                    <span>การชำระเงิน:</span>
+                    <span className="font-medium text-slate-800">
+                      {combinedPaymentMethod === 'transfer' && '📱 โอนเงินผ่านบัญชี'}
+                      {combinedPaymentMethod === 'cash' && '💵 เงินสด'}
+                      {combinedPaymentMethod === 'split' &&
+                        `🔀 สลับ (สด ${settings.currencySymbol}${combinedCash} / โอน ${settings.currencySymbol}${combinedTransfer})`}
+                    </span>
+                  </div>
+                </>
+              ) : (
+                <>
+                  {(bill.totalDiscountAmount || 0) > 0 && (
+                    <>
+                      <div className="flex justify-between text-slate-500">
+                        <span>ยอดรวมก่อนลด:</span>
+                        <span>
+                          {settings.currencySymbol}
+                          {(
+                            bill.subtotalBeforeDiscount ||
+                            bill.grossTotal + (bill.totalDiscountAmount || 0)
+                          ).toLocaleString()}
+                        </span>
+                      </div>
+                      <div className="flex justify-between text-emerald-700 font-semibold">
+                        <span>ส่วนลดรวม (ทางร้านรับผิดชอบ):</span>
+                        <span>
+                          -{settings.currencySymbol}
+                          {(bill.totalDiscountAmount || 0).toLocaleString()}
+                        </span>
+                      </div>
+                    </>
+                  )}
+
+                  <div className="flex justify-between text-base font-extrabold text-slate-900 pt-1">
+                    <span>ยอดสุทธิที่ชำระ</span>
+                    <span className="text-emerald-700 font-mono">
+                      {settings.currencySymbol}
+                      {bill.grossTotal.toLocaleString()}
+                    </span>
+                  </div>
+
+                  <div className="flex justify-between text-slate-600 pt-1">
+                    <span>การชำระเงิน:</span>
+                    <span className="font-medium text-slate-800">
+                      {bill.paymentMethod === 'transfer' && '📱 โอนเงินผ่านบัญชี'}
+                      {bill.paymentMethod === 'cash' && '💵 เงินสด'}
+                      {bill.paymentMethod === 'split' &&
+                        `🔀 สลับ (สด ${settings.currencySymbol}${bill.cashAmount} / โอน ${settings.currencySymbol}${bill.transferAmount})`}
+                    </span>
                   </div>
                 </>
               )}
-
-              <div className="flex justify-between text-base font-extrabold text-slate-900 pt-1">
-                <span>ยอดสุทธิที่ชำระ</span>
-                <span className="text-emerald-700">{settings.currencySymbol}{bill.grossTotal.toLocaleString()}</span>
-              </div>
-
-              <div className="flex justify-between text-slate-600 pt-1">
-                <span>การชำระเงิน:</span>
-                <span className="font-medium text-slate-800">
-                  {bill.paymentMethod === 'transfer' && '📱 โอนเงินผ่านบัญชี'}
-                  {bill.paymentMethod === 'cash' && '💵 เงินสด'}
-                  {bill.paymentMethod === 'split' && `🔀 สลับ (สด ${settings.currencySymbol}${bill.cashAmount} / โอน ${settings.currencySymbol}${bill.transferAmount})`}
-                </span>
-              </div>
             </div>
 
             {/* Footer Notice */}
@@ -263,19 +522,23 @@ ${(bill.totalDiscountAmount || 0) > 0 ? `ยอดรวมก่อนลด: $
         </div>
 
         {/* Action Buttons */}
-        <div className={`p-4 border-t flex items-center justify-between gap-3 ${
-          isDark ? 'bg-zinc-950/80 border-zinc-800' : 'bg-slate-50 border-slate-200'
-        }`}>
+        <div
+          className={`p-4 border-t flex items-center justify-between gap-3 ${
+            isDark ? 'bg-zinc-950/80 border-zinc-800' : 'bg-slate-50 border-slate-200'
+          }`}
+        >
           <button
             onClick={handleCopySummary}
             className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border text-sm font-medium transition-colors btn-tactile ${
-              isDark ? 'border-zinc-700 bg-zinc-800 hover:bg-zinc-700 text-zinc-200' : 'border-slate-200 bg-white hover:bg-slate-100 text-slate-700 shadow-2xs'
+              isDark
+                ? 'border-zinc-700 bg-zinc-800 hover:bg-zinc-700 text-zinc-200'
+                : 'border-slate-200 bg-white hover:bg-slate-100 text-slate-700 shadow-2xs'
             }`}
           >
             {copied ? <Check className="w-4 h-4 text-emerald-600" /> : <Share2 className="w-4 h-4 text-slate-500" />}
             <span>{copied ? 'คัดลอกแล้ว!' : 'คัดลอกส่งไลน์'}</span>
           </button>
-          
+
           <button
             onClick={handlePrint}
             className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-sm font-semibold transition-all shadow-xs btn-tactile"

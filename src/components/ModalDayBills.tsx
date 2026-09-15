@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { SaleBill, PaymentMethod } from '../types';
+import { calculateBillTransactionMetrics, getBillMergedInfo } from '../utils/billGrouping';
 import {
   X,
   Receipt,
@@ -105,6 +106,7 @@ export const ModalDayBills: React.FC<ModalDayBillsProps> = ({
   const totalShopCommission = dayBills.reduce((s, b) => s + b.commission.shopNetEarned, 0);
   const totalDayExpenses = dayExpenses.reduce((s, e) => s + e.amount, 0);
   const totalFinalShopNet = totalShopCommission - totalDayExpenses;
+  const dayTransactionMetrics = calculateBillTransactionMetrics(dayBills);
 
   // Quick switch payment method
   const handleQuickPaymentSwitch = (bill: SaleBill, newMethod: PaymentMethod) => {
@@ -181,7 +183,7 @@ export const ModalDayBills: React.FC<ModalDayBillsProps> = ({
                 รายการบิลย้อนหลัง {formattedDate}
               </h3>
               <p className={`text-xs ${isDark ? 'text-zinc-400' : 'text-slate-500'}`}>
-                วันที่ {dateStr} • ทั้งหมด {dayBills.length} บิล
+                วันที่ {dateStr} • รับชำระ {dayTransactionMetrics.totalPaymentBills} บิล{dayBills.length !== dayTransactionMetrics.totalPaymentBills ? ` (${dayBills.length} บริการ • รวมบิลชำระด้วยกัน)` : ''}
               </p>
             </div>
           </div>
@@ -219,16 +221,18 @@ export const ModalDayBills: React.FC<ModalDayBillsProps> = ({
               {settings.currencySymbol}{totalShopSales.toLocaleString()}
             </span>
             <span className="text-[10px] text-zinc-500 block">
-              {totalTips > 0 ? `(ทิปช่าง ฿${totalTips.toLocaleString()} • ${dayBills.length} บิล)` : `ทั้งหมด ${dayBills.length} บิล`}
+              {totalTips > 0
+                ? `(ทิปช่าง ฿${totalTips.toLocaleString()} • ${dayTransactionMetrics.totalPaymentBills} บิลชำระ)`
+                : `ทั้งหมด ${dayTransactionMetrics.totalPaymentBills} บิลชำระ${dayBills.length !== dayTransactionMetrics.totalPaymentBills ? ` (${dayBills.length} บริการ)` : ''}`}
             </span>
           </div>
           <div className={`p-3 rounded-xl border ${isDark ? 'bg-zinc-950/80 border-zinc-800' : 'bg-slate-50 border-slate-200'}`}>
             <span className="text-[11px] text-zinc-400 block font-medium">ยอดเงินโอน / สด</span>
             <span className="text-xs sm:text-sm font-bold font-mono text-sky-400 block">
-              โอน: {settings.currencySymbol}{totalTransfer.toLocaleString()}
+              โอน ({dayTransactionMetrics.transferBillCount} บิล): {settings.currencySymbol}{totalTransfer.toLocaleString()}
             </span>
             <span className="text-xs sm:text-sm font-bold font-mono text-emerald-400 block">
-              สด: {settings.currencySymbol}{totalCash.toLocaleString()}
+              สด ({dayTransactionMetrics.cashBillCount} บิล): {settings.currencySymbol}{totalCash.toLocaleString()}
             </span>
           </div>
           <div className={`p-3 rounded-xl border ${isDark ? 'bg-zinc-950/80 border-zinc-800' : 'bg-slate-50 border-slate-200'}`}>
@@ -319,8 +323,21 @@ export const ModalDayBills: React.FC<ModalDayBillsProps> = ({
                     </tr>
                   </thead>
                   <tbody className={`divide-y ${isDark ? 'divide-zinc-800/60' : 'divide-slate-200/80'}`}>
-                    {filteredBills.map((bill, index) => (
-                      <tr key={bill.id} className={isDark ? 'hover:bg-zinc-800/40 text-zinc-300' : 'hover:bg-slate-50 text-slate-800'}>
+                    {filteredBills.map((bill, index) => {
+                      const mergedInfo = getBillMergedInfo(bill, dayBills);
+                      return (
+                        <tr
+                          key={bill.id}
+                          className={`${
+                            isDark ? 'hover:bg-zinc-800/40 text-zinc-300' : 'hover:bg-slate-50 text-slate-800'
+                          } ${
+                            mergedInfo.isMerged
+                              ? isDark
+                                ? 'bg-indigo-950/20 border-l-2 border-l-indigo-500'
+                                : 'bg-indigo-50/40 border-l-2 border-l-indigo-500'
+                              : ''
+                          } transition-colors`}
+                        >
                         <td className="py-2.5 px-3 font-mono">
                           <div className="flex items-center gap-2">
                             <span className={`w-5 h-5 rounded-md flex items-center justify-center font-mono font-bold text-[11px] shrink-0 ${
@@ -335,10 +352,17 @@ export const ModalDayBills: React.FC<ModalDayBillsProps> = ({
                           </div>
                         </td>
                         <td className="py-2.5 px-3 font-semibold">
-                          <div>{bill.customerName}</div>
-                          {bill.mergedGroupId && (
-                            <span className="inline-block mt-0.5 px-1.5 py-0.2 rounded text-[9px] font-bold bg-indigo-500/20 text-indigo-400 border border-indigo-500/30">
-                              🔗 {bill.mergedGroupName || `${bill.mergedBillCount || 3} รายการนี้ รวมกัน`}
+                          <div className="flex items-center gap-1.5">
+                            <span>{bill.customerName}</span>
+                            {mergedInfo.isMerged && (
+                              <span className="text-[11px] text-indigo-400 font-bold" title={`รวมชำระคู่กับ: ${mergedInfo.partnerBillNumbers.join(', ')}`}>
+                                🔗
+                              </span>
+                            )}
+                          </div>
+                          {mergedInfo.isMerged && (
+                            <span className="inline-block mt-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold bg-indigo-500/20 text-indigo-400 border border-indigo-500/30">
+                              รวมชำระคู่กับ {mergedInfo.partnerBillNumbers.map((n) => `#${n}`).join(', ')} ({mergedInfo.partnerCustomerNames.join(', ')})
                             </span>
                           )}
                         </td>
@@ -433,7 +457,8 @@ export const ModalDayBills: React.FC<ModalDayBillsProps> = ({
                           </div>
                         </td>
                       </tr>
-                    ))}
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

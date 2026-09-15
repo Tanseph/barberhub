@@ -2,6 +2,7 @@ import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
 import { SaleBill, Barber, ShopExpense, ShopSettings } from '../types';
 import { getBillingCycleInfo } from './billingCycle';
+import { calculateBillTransactionMetrics, getBillMergedInfo } from './billGrouping';
 
 interface GenerateReportPdfParams {
   settings: ShopSettings;
@@ -62,10 +63,15 @@ export async function exportReportToPDF({
 
   const totalCash = periodBills.reduce((s, b) => s + b.cashAmount, 0);
   const totalTransfer = periodBills.reduce((s, b) => s + b.transferAmount, 0);
-  const totalHeads = periodBills.reduce((s, b) => s + (b.haircutFee > 0 ? (b.headCount && b.headCount > 0 ? b.headCount : 1) : 0), 0);
-  const totalBills = periodBills.length;
-  const transferBillCount = periodBills.filter((b) => b.paymentMethod === 'transfer' || (b.paymentMethod === 'split' && b.transferAmount > 0)).length;
-  const cashBillCount = periodBills.filter((b) => b.paymentMethod === 'cash' || (b.paymentMethod === 'split' && b.cashAmount > 0)).length;
+
+  // Grouped bills and transaction metrics (merged bills count as 1 payment transaction)
+  const transactionMetrics = calculateBillTransactionMetrics(periodBills);
+  const totalHeads = transactionMetrics.totalHeads;
+  const totalPaymentBills = transactionMetrics.totalPaymentBills;
+  const totalBills = totalPaymentBills;
+  const totalRawBills = transactionMetrics.totalServicesCount;
+  const transferBillCount = transactionMetrics.transferBillCount;
+  const cashBillCount = transactionMetrics.cashBillCount;
 
   const cutoffDay = settings.billingCycleCutoffDay ?? 0;
   const billingCycleInfo = getBillingCycleInfo(selectedMonth, cutoffDay);
@@ -129,7 +135,7 @@ export async function exportReportToPDF({
         <div>
           <h1 style="margin: 0 0 4px 0; font-size: 22px; font-weight: 900; color: #0f172a;">${settings.shopName || 'BARBER POS'}</h1>
           ${
-            hasAddress || hasPhone || hasPromptPay
+            viewMode === 'daily' && (hasAddress || hasPhone || hasPromptPay)
               ? `
           <div style="font-size: 11px; color: #475569; font-family: monospace;">
             ${hasAddress ? `<div>ที่อยู่: ${settings.shopAddress}</div>` : ''}
@@ -153,8 +159,8 @@ export async function exportReportToPDF({
       <!-- Overview Quick Strip -->
       <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 16px; background-color: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 8px; padding: 10px 14px;">
         <div>
-          <div style="font-size: 10px; color: #64748b; font-weight: bold;">✂️ จำนวนหัวตัดผม:</div>
-          <div style="font-size: 14px; font-weight: 900; font-family: monospace; color: #b45309;">${totalHeads} หัว <span style="font-size: 10px; font-weight: normal; color: #64748b;">(ทั้งหมด ${totalBills} บิล)</span></div>
+          <div style="font-size: 10px; color: #64748b; font-weight: bold;">✂️ จำนวนหัวลูกค้า & บิลชำระ:</div>
+          <div style="font-size: 14px; font-weight: 900; font-family: monospace; color: #b45309;">${totalHeads} หัว <span style="font-size: 10px; font-weight: normal; color: #64748b;">(${totalPaymentBills} บิลชำระ${totalRawBills !== totalPaymentBills ? ` • ${totalRawBills} บริการ` : ''})</span></div>
         </div>
         <div>
           <div style="font-size: 10px; color: #64748b; font-weight: bold;">📱 ยอดโอน (${transferBillCount} บิล):</div>
@@ -440,7 +446,7 @@ export async function exportReportToPDF({
       <!-- Sales Bills Ledger Table (Daily view only) -->
       <div style="margin-bottom: 24px;">
         <h2 style="font-size: 13px; font-weight: bold; margin: 0 0 8px 0; color: #0f172a; border-left: 4px solid #3b82f6; padding-left: 8px; display: flex; justify-content: space-between;">
-          <span>รายการบิลขายประจำงวด (${periodBills.length} บิล)</span>
+          <span>รายการบิลขายประจำงวด (${periodBills.length} รายการ)</span>
           <span style="font-size: 11px; font-weight: normal; color: #64748b; font-family: monospace;">
             เงินสด: ฿${totalCash.toLocaleString()} | เงินโอน: ฿${totalTransfer.toLocaleString()}
           </span>
@@ -464,14 +470,19 @@ export async function exportReportToPDF({
           </thead>
           <tbody>
             ${periodBills
-              .map(
-                (b) => `
-              <tr style="border-bottom: 1px solid #e2e8f0;">
+              .map((b) => {
+                const mergedInfo = getBillMergedInfo(b, periodBills);
+                return `
+              <tr style="border-bottom: 1px solid #e2e8f0; ${mergedInfo.isMerged ? 'background-color: #f5f3ff;' : ''}">
                 <td style="padding: 5px 6px; font-family: monospace;">
-                  <strong>${b.billNumber}</strong>
+                  <strong style="color: ${mergedInfo.isMerged ? '#4338ca' : '#0f172a'};">${b.billNumber}</strong>
+                  ${mergedInfo.isMerged ? `<span style="color: #4338ca; font-weight: bold; margin-left: 3px;">🔗</span>` : ''}
                   <div style="font-size: 9px; color: #64748b;">${b.dateStr} ${b.timeStr} น.</div>
                 </td>
-                <td style="padding: 5px 6px; font-weight: 500;">${b.customerName}</td>
+                <td style="padding: 5px 6px; font-weight: 500;">
+                  ${b.customerName}
+                  ${mergedInfo.isMerged ? `<div style="font-size: 8px; color: #4338ca; font-weight: 600;">(คู่กับ: ${mergedInfo.partnerCustomerNames.join(', ')})</div>` : ''}
+                </td>
                 <td style="padding: 5px 6px;">${b.barberName}</td>
                 <td style="padding: 5px 6px; text-align: right; font-family: monospace;">${b.haircutFee > 0 ? `฿${b.haircutFee.toLocaleString()}${b.headCount && b.headCount > 1 ? ` (${b.headCount}หัว)` : ''}` : b.totalProductsFee > 0 ? '<span style="color: #b45309; font-size: 8px;">สินค้า (0หัว)</span>' : '-'}</td>
                 <td style="padding: 5px 6px; text-align: right; font-family: monospace;">${b.chemicalFee > 0 ? `฿${b.chemicalFee.toLocaleString()}` : '-'}</td>
@@ -484,11 +495,17 @@ export async function exportReportToPDF({
                 <td style="padding: 5px 6px; text-align: right; font-family: monospace; color: #059669; font-weight: bold;">฿${b.commission.barberTotalEarned.toLocaleString()}</td>
                 <td style="padding: 5px 6px; text-align: right; font-family: monospace; color: #b45309; font-weight: bold;">฿${b.commission.shopNetEarned.toLocaleString()}</td>
                 <td style="padding: 5px 6px; font-size: 9px;">
-                  ${b.mergedGroupId ? `<span style="background-color: #e0e7ff; color: #3730a3; padding: 2px 4px; border-radius: 4px;">รวมบิล #${b.mergedGroupId.slice(-4)}</span>` : '<span style="color: #64748b;">บิลเดี่ยว</span>'}
+                  ${
+                    mergedInfo.isMerged
+                      ? `<span style="background-color: #e0e7ff; color: #3730a3; padding: 2px 4px; border-radius: 4px; font-weight: bold;">
+                          🔗 รวมคู่ ${mergedInfo.partnerBillNumbers.map((n) => '#' + n).join(', ')}
+                        </span>`
+                      : `<span style="color: #64748b;">บิลเดี่ยว</span>`
+                  }
                 </td>
               </tr>
-            `
-              )
+            `;
+              })
               .join('')}
           </tbody>
         </table>

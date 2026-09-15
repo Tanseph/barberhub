@@ -29,6 +29,9 @@ import {
   Layers,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
+  ChevronUp,
+  Unlink,
   Gift,
   Tag,
   Sparkles,
@@ -47,6 +50,10 @@ import {
   filterExpensesByBillingCycle,
   isDateInBillingCycle,
 } from '../utils/billingCycle';
+import {
+  calculateBillTransactionMetrics,
+  getBillMergedInfo,
+} from '../utils/billGrouping';
 
 // Helper: Format Thai Date with Day of Week
 const formatThaiDateDisplay = (dateStr: string): string => {
@@ -107,6 +114,8 @@ export const TabDashboard: React.FC = () => {
     openEditBillModal,
     openConfirm,
     showToast,
+    unmergeSaleBills,
+    updateMergedGroupPayment,
   } = useApp();
 
   const isDark = theme.isDark ?? true;
@@ -125,6 +134,13 @@ export const TabDashboard: React.FC = () => {
 
   const [selectedDate, setSelectedDate] = useState<string>(defaultDateStr);
   const [selectedMonth, setSelectedMonth] = useState<string>(defaultMonthStr);
+
+  // Expanded state for merged groups in daily ledger
+  const [expandedGroupIds, setExpandedGroupIds] = useState<Record<string, boolean>>({});
+  const toggleGroupExpand = (groupId: string) => {
+    sounds.playClick();
+    setExpandedGroupIds((prev) => ({ ...prev, [groupId]: !prev[groupId] }));
+  };
 
   // Merge modal state
   const [isMergeModalOpen, setIsMergeModalOpen] = useState(false);
@@ -219,11 +235,16 @@ export const TabDashboard: React.FC = () => {
   const totalTransfer = allPeriodBills.reduce((s, b) => s + b.transferAmount, 0);
   const totalCash = allPeriodBills.reduce((s, b) => s + b.cashAmount, 0);
 
-  const periodHeads = allPeriodBills.reduce((s, b) => s + (b.haircutFee > 0 ? (b.headCount && b.headCount > 0 ? b.headCount : 1) : 0), 0);
+  const periodTransactionMetrics = useMemo(() => {
+    return calculateBillTransactionMetrics(allPeriodBills);
+  }, [allPeriodBills]);
+
+  const periodHeads = periodTransactionMetrics.totalHeads;
   const totalHaircuts = periodHeads;
+  const totalPaymentBills = periodTransactionMetrics.totalPaymentBills;
+  const periodTransferBills = periodTransactionMetrics.transferBillCount;
+  const periodCashBills = periodTransactionMetrics.cashBillCount;
   const totalChemicals = allPeriodBills.filter((b) => b.chemicalFee > 0).length;
-  const periodTransferBills = allPeriodBills.filter((b) => b.paymentMethod === 'transfer' || (b.paymentMethod === 'split' && b.transferAmount > 0)).length;
-  const periodCashBills = allPeriodBills.filter((b) => b.paymentMethod === 'cash' || (b.paymentMethod === 'split' && b.cashAmount > 0)).length;
 
   const totalHaircutDiscount = allPeriodBills.reduce((s, b) => s + (b.haircutDiscountAmount || 0), 0);
   const totalVoucherDiscount = allPeriodBills.reduce((s, b) => s + (b.voucherDiscountAmount || 0), 0);
@@ -241,7 +262,7 @@ export const TabDashboard: React.FC = () => {
   const totalShopNet = allPeriodBills.reduce((s, b) => s + b.commission.shopNetEarned, 0);
   const finalShopNetAfterExpenses = totalShopNet - totalShopExpenses;
   const shopProfitMargin = totalShopRevenue > 0 ? ((finalShopNetAfterExpenses / totalShopRevenue) * 100).toFixed(1) : '0';
-  const avgTicketValue = allPeriodBills.length > 0 ? Math.round(totalShopRevenue / allPeriodBills.length) : 0;
+  const avgTicketValue = totalPaymentBills > 0 ? Math.round(totalShopRevenue / totalPaymentBills) : 0;
 
   // Transfer vs Cash percentages (คำนวณจากยอดเงินที่รับเข้ามาจริง)
   const transferPercent = totalCustomerPayments > 0 ? Math.round((totalTransfer / totalCustomerPayments) * 100) : 0;
@@ -291,6 +312,11 @@ export const TabDashboard: React.FC = () => {
         }
       });
   }, [allPeriodBills, barberFilter, paymentFilter, billSearch, dailySortOrder]);
+
+  // Transaction metrics for the daily bills (calculating payment transactions & heads)
+  const dailyTransactionMetrics = useMemo(() => {
+    return calculateBillTransactionMetrics(filteredDailyBills);
+  }, [filteredDailyBills]);
 
   // Monthly breakdown day by day - Fast O(N) grouping
   const monthlyDaysSummary = useMemo(() => {
@@ -343,13 +369,10 @@ export const TabDashboard: React.FC = () => {
         if (b.haircutFee > 0) {
           haircutCount += (b.headCount && b.headCount > 0 ? b.headCount : 1);
         }
-        if (b.paymentMethod === 'transfer' || (b.paymentMethod === 'split' && b.transferAmount > 0)) {
-          transferBillCount++;
-        }
-        if (b.paymentMethod === 'cash' || (b.paymentMethod === 'split' && b.cashAmount > 0)) {
-          cashBillCount++;
-        }
       }
+
+      // คำนวณจำนวนธุรกรรมชำระเงินจริง (Merged bills นับเป็น 1 ธุรกรรม/บิลชำระ)
+      const dayMetrics = calculateBillTransactionMetrics(dayBills);
 
       let shopExpenseAmount = 0;
       for (let k = 0; k < dayExpensesList.length; k++) {
@@ -366,11 +389,12 @@ export const TabDashboard: React.FC = () => {
         dateStr: day.dateStr,
         dayName: day.dayName,
         dayFullDateTh: day.dayFullDateTh,
-        billCount: dayBills.length,
-        headsCount: haircutCount,
-        haircutCount,
-        transferBillCount,
-        cashBillCount,
+        billCount: dayMetrics.totalPaymentBills,
+        servicesCount: dayBills.length,
+        headsCount: dayMetrics.totalHeads,
+        haircutCount: dayMetrics.totalHeads,
+        transferBillCount: dayMetrics.transferBillCount,
+        cashBillCount: dayMetrics.cashBillCount,
         expenseCount: dayExpensesList.length,
         transferAmount,
         cashAmount,
@@ -432,6 +456,19 @@ export const TabDashboard: React.FC = () => {
   const handleQuickPaymentSwitch = (bill: SaleBill, newMethod: PaymentMethod) => {
     if (bill.paymentMethod === newMethod) return;
 
+    if (bill.mergedGroupId) {
+      updateMergedGroupPayment(bill.mergedGroupId, newMethod);
+      const methodNameTh =
+        newMethod === 'cash' ? 'เงินสด (💵)' : newMethod === 'transfer' ? 'โอนเงิน (📱)' : 'สลับ (สด+โอน 🔀)';
+      showToast(
+        'สลับวิธีชำระกลุ่มรวมบิล 🔄',
+        `บิล ${bill.billNumber} และบิลที่รวมชำระด้วยกัน เปลี่ยนเป็น "${methodNameTh}" เรียบร้อย`,
+        'success',
+        '💳'
+      );
+      return;
+    }
+
     let newCash = 0;
     let newTransfer = 0;
 
@@ -463,11 +500,33 @@ export const TabDashboard: React.FC = () => {
     );
   };
 
+  // Unmerge bill handler
+  const handleUnmergeBill = (bill: SaleBill) => {
+    if (!bill.mergedGroupId) return;
+    const mergedInfo = getBillMergedInfo(bill, allPeriodBills);
+    sounds.playClick();
+    openConfirm({
+      title: 'ต้องการแยกบิลรายการนี้ใช่หรือไม่? 🔓',
+      message: `คุณกำลังจะแยกบิล "${bill.billNumber}" (ลูกค้า: ${bill.customerName}) ออกจากการรวมชำระกับ ${mergedInfo.partnerBillNumbers.map((n) => `#${n}`).join(', ')} (${mergedInfo.partnerCustomerNames.join(', ')})`,
+      confirmText: 'แยกบิลกลับคืน',
+      cancelText: 'เก็บไว้ก่อน',
+      confirmColor: 'bg-indigo-600 hover:bg-indigo-500',
+      icon: '🔗',
+      onConfirm: () => {
+        unmergeSaleBills(bill.mergedGroupId!);
+      },
+    });
+  };
+
   // Delete bill handler
   const handleDeleteClick = (bill: SaleBill) => {
+    const mergedInfo = getBillMergedInfo(bill, allPeriodBills);
+    sounds.playClick();
     openConfirm({
       title: 'ต้องการลบบิลนี้ใช่หรือไม่? 🗑️',
-      message: `คุณกำลังจะลบบิลเลขที่ "${bill.billNumber}" (ลูกค้า: ${bill.customerName}, ยอดเงิน: ${settings.currencySymbol}${bill.grossTotal.toLocaleString()})\n\nเมื่อลบแล้ว ยอดขาย สถิติ และส่วนแบ่งของช่างจะถูกคำนวณใหม่ทันที`,
+      message: mergedInfo.isMerged
+        ? `คุณกำลังจะลบบิลเลขที่ "${bill.billNumber}" (ลูกค้า: ${bill.customerName}, ยอดเงิน: ${settings.currencySymbol}${bill.grossTotal.toLocaleString()})\n\n⚠️ บิลนี้รวมชำระคู่กับ ${mergedInfo.partnerBillNumbers.map((n) => `#${n}`).join(', ')} (${mergedInfo.partnerCustomerNames.join(', ')})\nเมื่อลบแล้ว ยอดขาย สถิติ และส่วนแบ่งของช่างจะถูกคำนวณใหม่ทันที`
+        : `คุณกำลังจะลบบิลเลขที่ "${bill.billNumber}" (ลูกค้า: ${bill.customerName}, ยอดเงิน: ${settings.currencySymbol}${bill.grossTotal.toLocaleString()})\n\nเมื่อลบแล้ว ยอดขาย สถิติ และส่วนแบ่งของช่างจะถูกคำนวณใหม่ทันที`,
       confirmText: 'ลบบิลนี้เลย',
       cancelText: 'เก็บไว้ก่อน',
       confirmColor: 'bg-rose-600 hover:bg-rose-500',
@@ -539,28 +598,37 @@ export const TabDashboard: React.FC = () => {
         'ยอดเงินโอน',
         'ส่วนแบ่งช่าง',
         'ส่วนของร้าน',
+        'สถานะรวมบิล',
         'หมายเหตุ',
       ];
 
-      const rows = allPeriodBills.map((b) => [
-        b.billNumber,
-        b.dateStr,
-        b.timeStr,
-        `"${b.customerName.replace(/"/g, '""')}"`,
-        b.customerPhone || '',
-        `"${b.barberName.replace(/"/g, '""')}"`,
-        b.haircutFee,
-        b.chemicalFee,
-        b.totalProductsFee,
-        b.tipFee,
-        b.grossTotal,
-        b.paymentMethod === 'transfer' ? 'เงินโอน' : b.paymentMethod === 'cash' ? 'เงินสด' : 'สลับ (สด+โอน)',
-        b.cashAmount,
-        b.transferAmount,
-        b.commission.barberTotalEarned,
-        b.commission.shopNetEarned,
-        `"${(b.notes || '').replace(/"/g, '""')}"`,
-      ]);
+      const rows = allPeriodBills.map((b) => {
+        const mergedInfo = getBillMergedInfo(b, allPeriodBills);
+        const mergeStatusStr = mergedInfo.isMerged
+          ? `รวมชำระคู่กับ ${mergedInfo.partnerBillNumbers.map((n) => `#${n}`).join(', ')} (${mergedInfo.partnerCustomerNames.join(', ')})`
+          : 'บิลเดี่ยว';
+
+        return [
+          `"${b.billNumber}"`,
+          b.dateStr,
+          b.timeStr,
+          `"${b.customerName.replace(/"/g, '""')}"`,
+          b.customerPhone || '',
+          `"${b.barberName.replace(/"/g, '""')}"`,
+          b.haircutFee,
+          b.chemicalFee,
+          b.totalProductsFee,
+          b.tipFee,
+          b.grossTotal,
+          b.paymentMethod === 'transfer' ? 'เงินโอน' : b.paymentMethod === 'cash' ? 'เงินสด' : 'สลับ (สด+โอน)',
+          b.cashAmount,
+          b.transferAmount,
+          b.commission.barberTotalEarned,
+          b.commission.shopNetEarned,
+          `"${mergeStatusStr}"`,
+          `"${(b.notes || '').replace(/"/g, '""')}"`,
+        ];
+      });
 
       const csvContent = '\uFEFF' + [headers.join(','), ...rows.map((e) => e.join(','))].join('\n');
       const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -626,7 +694,7 @@ export const TabDashboard: React.FC = () => {
             <p className={`text-xs ${mutedText} mt-1`}>
               {viewMode === 'daily'
                 ? `สรุปยอดประจำวัน: ${formatThaiDateDisplay(selectedDate)}`
-                : `รอบบิล: ${billingCycleInfo.fullLabel} (${billingCycleInfo.cutoffDescription})`}
+                : billingCycleInfo.monthOnlyLabel}
             </p>
           </div>
 
@@ -948,7 +1016,7 @@ export const TabDashboard: React.FC = () => {
           <div className="flex items-center justify-between mb-1.5">
             <span className={`text-xs font-bold ${mutedText} flex items-center gap-1.5`}>
               <Users className="w-3.5 h-3.5 text-sky-500" />
-              <span>จำนวนลูกค้า & บิล</span>
+              <span>จำนวนลูกค้า & บิลชำระ</span>
             </span>
             <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-sky-500/15 text-sky-600 dark:text-sky-400">
               เฉลี่ย ฿{avgTicketValue}/บิล
@@ -957,7 +1025,9 @@ export const TabDashboard: React.FC = () => {
 
           <div className="text-2xl sm:text-3xl font-black font-mono text-sky-500 tracking-tight">
             {periodHeads} <span className="text-sm font-normal text-zinc-400">หัว</span>
-            <span className={`text-xs font-medium ${mutedText} ml-2 font-sans`}>({allPeriodBills.length} บิล)</span>
+            <span className={`text-xs font-medium ${mutedText} ml-2 font-sans`}>
+              ({totalPaymentBills} บิลชำระ{allPeriodBills.length !== totalPaymentBills ? ` • ${allPeriodBills.length} บริการ` : ''})
+            </span>
           </div>
 
           <div className={`mt-2.5 pt-2.5 border-t ${borderSubtle} flex items-center justify-between text-[11px] ${mutedText}`}>
@@ -1385,7 +1455,8 @@ export const TabDashboard: React.FC = () => {
                     <span>รายการบิลประจำวันที่ {formatThaiDateDisplay(selectedDate)}</span>
                   </h3>
                   <p className={`text-xs ${mutedText}`}>
-                    บันทึกทั้งหมด {filteredDailyBills.length} บิล • สามารถกดสลับเงินสด/โอนด่วน แก้ไข หรือลบบิลได้
+                    แสดงครบทุกบิล {filteredDailyBills.length} รายการ (รับชำระ {dailyTransactionMetrics.totalPaymentBills} บิลชำระ
+                    {filteredDailyBills.length !== dailyTransactionMetrics.totalPaymentBills ? ` • มี ${filteredDailyBills.length - dailyTransactionMetrics.totalPaymentBills + dailyTransactionMetrics.mergedGroupsCount} บิลรวมชำระด้วยกัน` : ''}) • สัญลักษณ์ 🔗 ระบุคู่บิลที่รวมชำระ
                   </p>
                 </div>
 
@@ -1483,32 +1554,59 @@ export const TabDashboard: React.FC = () => {
                       </tr>
                     ) : (
                       filteredDailyBills.map((bill, index) => {
+                        const seqNumber = dailySortOrder === 'asc' ? index + 1 : filteredDailyBills.length - index;
+                        const mergedInfo = getBillMergedInfo(bill, allPeriodBills);
                         const hasDiscount = (bill.totalDiscountAmount || 0) > 0;
                         const subtotalBefore = bill.subtotalBeforeDiscount || (bill.grossTotal + (bill.totalDiscountAmount || 0));
 
                         return (
-                          <tr key={bill.id} className={`${tableRowBg} transition-colors`}>
+                          <tr
+                            key={bill.id}
+                            className={`${tableRowBg} ${
+                              mergedInfo.isMerged
+                                ? isDark
+                                  ? 'bg-indigo-950/20 hover:bg-indigo-950/35 border-l-4 border-l-indigo-500'
+                                  : 'bg-indigo-50/50 hover:bg-indigo-50/80 border-l-4 border-l-indigo-500'
+                                : ''
+                            } transition-colors`}
+                          >
                             {/* 1. บิล & เวลา */}
                             <td className="py-3 px-3.5 whitespace-nowrap">
                               <div className="flex items-center gap-2">
-                                <span className={`w-5 h-5 rounded-md flex items-center justify-center font-mono font-bold text-[11px] shrink-0 ${
-                                  isDark ? 'bg-zinc-800 text-amber-400 border border-zinc-700/60' : 'bg-amber-100/80 text-amber-900 border border-amber-200/80'
-                                }`}>
-                                  {dailySortOrder === 'asc' ? index + 1 : filteredDailyBills.length - index}
+                                <span
+                                  className={`w-5 h-5 rounded-md flex items-center justify-center font-mono font-bold text-[11px] shrink-0 ${
+                                    mergedInfo.isMerged
+                                      ? isDark
+                                        ? 'bg-indigo-900/60 text-indigo-300 border border-indigo-700/60'
+                                        : 'bg-indigo-100 text-indigo-900 border border-indigo-200'
+                                      : isDark
+                                      ? 'bg-zinc-800 text-amber-400 border border-zinc-700/60'
+                                      : 'bg-amber-100/80 text-amber-900 border border-amber-200/80'
+                                  }`}
+                                >
+                                  {seqNumber}
                                 </span>
                                 <div>
-                                  <span className="font-mono font-bold text-amber-500 block text-xs">{bill.billNumber}</span>
+                                  <div className="flex items-center gap-1.5">
+                                    <span
+                                      className={`font-mono font-bold block text-xs ${
+                                        mergedInfo.isMerged ? 'text-indigo-400' : 'text-amber-500'
+                                      }`}
+                                    >
+                                      {bill.billNumber}
+                                    </span>
+                                    {mergedInfo.isMerged && (
+                                      <span
+                                        title={`รวมชำระคู่กับ: ${mergedInfo.partnerBillNumbers.join(', ')}`}
+                                        className="text-xs text-indigo-400 font-bold"
+                                      >
+                                        🔗
+                                      </span>
+                                    )}
+                                  </div>
                                   <span className={`text-[11px] font-mono ${mutedText}`}>{bill.timeStr} น.</span>
                                 </div>
                               </div>
-                              {bill.mergedGroupId && (
-                                <div className="mt-1 ml-7">
-                                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-indigo-500/15 text-indigo-400 border border-indigo-500/30">
-                                    <Link2 className="w-2.5 h-2.5" />
-                                    <span>{bill.mergedGroupName || 'รวมบิล'}</span>
-                                  </span>
-                                </div>
-                              )}
                             </td>
 
                             {/* 2. ลูกค้า & ช่าง */}
@@ -1521,16 +1619,43 @@ export const TabDashboard: React.FC = () => {
                                 <Scissors className="w-2.5 h-2.5" />
                                 <span>ช่าง{bill.barberName}</span>
                               </div>
+                              {/* สัญลักษณ์แจ้งเตือนระบุคู่บิลที่รวมชำระ */}
+                              {mergedInfo.isMerged && (
+                                <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                                  <span
+                                    className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold ${
+                                      isDark
+                                        ? 'bg-indigo-500/25 text-indigo-300 border border-indigo-500/40'
+                                        : 'bg-indigo-100 text-indigo-800 border border-indigo-200'
+                                    }`}
+                                    title={`บิลนี้รวมชำระคู่กับ: ${mergedInfo.partnerBillNumbers.map((n) => `#${n}`).join(', ')}`}
+                                  >
+                                    <Link2 className="w-3 h-3 text-indigo-400 shrink-0" />
+                                    <span>
+                                      รวมชำระคู่กับ{' '}
+                                      <strong className="font-mono">
+                                        {mergedInfo.partnerBillNumbers.map((n) => `#${n}`).join(', ')}
+                                      </strong>{' '}
+                                      ({mergedInfo.partnerCustomerNames.join(', ')})
+                                    </span>
+                                  </span>
+                                  <span className="text-[10px] font-mono text-zinc-400 dark:text-zinc-500">
+                                    [ยอดรวมจ่าย {settings.currencySymbol}{mergedInfo.groupTotalGross.toLocaleString()}]
+                                  </span>
+                                </div>
+                              )}
                             </td>
 
                             {/* 3. รายการบริการ & ส่วนลด */}
                             <td className="py-3 px-3.5">
                               <div className="flex flex-wrap items-center gap-1.5 max-w-sm">
                                 {bill.haircutFee > 0 ? (
-                                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[11px] font-medium border ${
-                                    isDark ? 'bg-zinc-800/80 border-zinc-700 text-zinc-200' : 'bg-slate-100 border-slate-200 text-slate-700'
-                                  }`}>
-                                    <span>✂️ ตัดผม{(bill.headCount && bill.headCount > 1) ? ` (${bill.headCount} หัว)` : ''}</span>
+                                  <span
+                                    className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[11px] font-medium border ${
+                                      isDark ? 'bg-zinc-800/80 border-zinc-700 text-zinc-200' : 'bg-slate-100 border-slate-200 text-slate-700'
+                                    }`}
+                                  >
+                                    <span>✂️ ตัดผม{bill.headCount && bill.headCount > 1 ? ` (${bill.headCount} หัว)` : ''}</span>
                                     <strong className="font-mono">{settings.currencySymbol}{bill.haircutFee.toLocaleString()}</strong>
                                   </span>
                                 ) : bill.totalProductsFee > 0 ? (
@@ -1547,18 +1672,22 @@ export const TabDashboard: React.FC = () => {
                                 )}
 
                                 {bill.chemicalFee > 0 && (
-                                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[11px] font-medium border ${
-                                    isDark ? 'bg-purple-950/40 border-purple-500/30 text-purple-300' : 'bg-purple-50 border-purple-200 text-purple-800'
-                                  }`}>
+                                  <span
+                                    className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[11px] font-medium border ${
+                                      isDark ? 'bg-purple-950/40 border-purple-500/30 text-purple-300' : 'bg-purple-50 border-purple-200 text-purple-800'
+                                    }`}
+                                  >
                                     <span>🧪 เคมี</span>
                                     <strong className="font-mono">{settings.currencySymbol}{bill.chemicalFee.toLocaleString()}</strong>
                                   </span>
                                 )}
 
                                 {bill.totalProductsFee > 0 && (
-                                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[11px] font-medium border ${
-                                    isDark ? 'bg-sky-950/40 border-sky-500/30 text-sky-300' : 'bg-sky-50 border-sky-200 text-sky-800'
-                                  }`}>
+                                  <span
+                                    className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[11px] font-medium border ${
+                                      isDark ? 'bg-sky-950/40 border-sky-500/30 text-sky-300' : 'bg-sky-50 border-sky-200 text-sky-800'
+                                    }`}
+                                  >
                                     <span>🧴 สินค้า ({bill.products?.length || 1})</span>
                                     <strong className="font-mono">{settings.currencySymbol}{bill.totalProductsFee.toLocaleString()}</strong>
                                   </span>
@@ -1657,6 +1786,32 @@ export const TabDashboard: React.FC = () => {
                                 >
                                   <Eye className="w-3.5 h-3.5" />
                                 </button>
+                                <button
+                                  onClick={() => handleOpenMerge(bill.id, bill.mergedGroupId)}
+                                  title={mergedInfo.isMerged ? 'แก้ไขการรวมชำระคู่กับบิลนี้' : 'รวมชำระคู่กับบิลอื่น'}
+                                  className={`p-1.5 rounded-lg transition-colors btn-tactile ${
+                                    mergedInfo.isMerged
+                                      ? isDark
+                                        ? 'bg-indigo-950 hover:bg-indigo-900 text-indigo-300 border border-indigo-700/50'
+                                        : 'bg-indigo-100 hover:bg-indigo-200 text-indigo-800 border border-indigo-200'
+                                      : isDark
+                                      ? 'bg-zinc-800 hover:bg-zinc-700 text-zinc-300'
+                                      : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                                  }`}
+                                >
+                                  <Link2 className="w-3.5 h-3.5" />
+                                </button>
+                                {mergedInfo.isMerged && (
+                                  <button
+                                    onClick={() => handleUnmergeBill(bill)}
+                                    title="แยกบิล (ยกเลิกการรวมชำระ)"
+                                    className={`p-1.5 rounded-lg transition-colors btn-tactile ${
+                                      isDark ? 'bg-zinc-800 hover:bg-zinc-700 text-amber-400' : 'bg-slate-100 hover:bg-slate-200 text-amber-600'
+                                    }`}
+                                  >
+                                    <Unlink className="w-3.5 h-3.5" />
+                                  </button>
+                                )}
                                 <button
                                   onClick={() => openEditBillModal(bill)}
                                   title="แก้ไขบิล"

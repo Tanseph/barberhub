@@ -136,8 +136,9 @@ interface AppContextType {
   ) => SaleBill;
   updateSaleBill: (id: string, billData: Partial<SaleBill>) => void;
   deleteSaleBill: (id: string) => void;
-  mergeSaleBills: (billIds: string[], groupName?: string, masterBillId?: string) => void;
+  mergeSaleBills: (billIds: string[], groupName?: string, masterBillId?: string, paymentMethod?: PaymentMethod) => void;
   unmergeSaleBills: (groupIdOrBillId: string) => void;
+  updateMergedGroupPayment: (groupId: string, newMethod: PaymentMethod) => void;
 
   expenses: ShopExpense[];
   addExpense: (expenseData: Omit<ShopExpense, 'id' | 'expenseNumber'>) => ShopExpense;
@@ -1428,7 +1429,32 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const deleteSaleBill = (id: string) => {
     const target = bills.find((b) => b.id === id);
     setBills((prev) => {
-      const next = prev.filter((b) => b.id !== id);
+      let next = prev.filter((b) => b.id !== id);
+
+      // If the deleted bill was in a merged group, check if only 1 bill remains
+      if (target?.mergedGroupId) {
+        const remainingInGroup = next.filter((b) => b.mergedGroupId === target.mergedGroupId);
+        if (remainingInGroup.length <= 1) {
+          next = next.map((b) => {
+            if (b.mergedGroupId === target.mergedGroupId) {
+              const cleaned: SaleBill = {
+                ...b,
+                mergedGroupId: undefined,
+                mergedGroupName: undefined,
+                isMergeMaster: undefined,
+                mergedBillCount: undefined,
+                mergedTotalAmount: undefined,
+              };
+              if (currentShopId) {
+                saveDocumentToCloud(currentShopId, 'bills', cleaned).catch(console.error);
+              }
+              return cleaned;
+            }
+            return b;
+          });
+        }
+      }
+
       if (currentShopId) {
         markIdDeleted(currentShopId, id);
         const keys = getTenantStorageKeys(currentShopId);
@@ -1442,7 +1468,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   // Merge / Group multiple bills together (รวมบิลชำระด้วยกัน)
-  const mergeSaleBills = (billIds: string[], customGroupName?: string, masterBillId?: string) => {
+  const mergeSaleBills = (
+    billIds: string[],
+    customGroupName?: string,
+    masterBillId?: string,
+    paymentMethod?: PaymentMethod
+  ) => {
     if (billIds.length < 2) {
       showToast('ไม่สามารถรวมบิลได้', 'กรุณาเลือกอย่างน้อย 2 บิลเพื่อรวมรายการ', 'warning', '⚠️');
       return;
@@ -1457,10 +1488,26 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const defaultLabel = `${count} รายการนี้ รวมกัน`;
     const finalGroupName = customGroupName?.trim() || defaultLabel;
     const primaryId = masterBillId || targetBills[0].id;
+    const unifiedMethod = paymentMethod || targetBills[0].paymentMethod;
 
     setBills((prev) => {
       const next = prev.map((bill) => {
         if (billIds.includes(bill.id)) {
+          let finalCash = bill.cashAmount;
+          let finalTransfer = bill.transferAmount;
+          if (paymentMethod) {
+            if (paymentMethod === 'cash') {
+              finalCash = bill.grossTotal;
+              finalTransfer = 0;
+            } else if (paymentMethod === 'transfer') {
+              finalCash = 0;
+              finalTransfer = bill.grossTotal;
+            } else if (paymentMethod === 'split') {
+              finalCash = Math.round(bill.grossTotal / 2);
+              finalTransfer = bill.grossTotal - finalCash;
+            }
+          }
+
           const updated: SaleBill = {
             ...bill,
             mergedGroupId: groupId,
@@ -1468,6 +1515,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             isMergeMaster: bill.id === primaryId,
             mergedBillCount: count,
             mergedTotalAmount: totalAmount,
+            ...(paymentMethod
+              ? {
+                  paymentMethod: unifiedMethod,
+                  cashAmount: finalCash,
+                  transferAmount: finalTransfer,
+                }
+              : {}),
           };
           if (currentShopId) {
             saveDocumentToCloud(currentShopId, 'bills', updated).catch(console.error);
@@ -1494,6 +1548,47 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       'success',
       '🔗'
     );
+  };
+
+  // Switch payment method for all bills in a merged group
+  const updateMergedGroupPayment = (groupId: string, newMethod: PaymentMethod) => {
+    setBills((prev) => {
+      const next = prev.map((bill) => {
+        if (bill.mergedGroupId === groupId) {
+          let newCash = 0;
+          let newTransfer = 0;
+          if (newMethod === 'cash') {
+            newCash = bill.grossTotal;
+            newTransfer = 0;
+          } else if (newMethod === 'transfer') {
+            newCash = 0;
+            newTransfer = bill.grossTotal;
+          } else if (newMethod === 'split') {
+            newCash = Math.round(bill.grossTotal / 2);
+            newTransfer = bill.grossTotal - newCash;
+          }
+
+          const updated: SaleBill = {
+            ...bill,
+            paymentMethod: newMethod,
+            cashAmount: newCash,
+            transferAmount: newTransfer,
+          };
+          if (currentShopId) {
+            saveDocumentToCloud(currentShopId, 'bills', updated).catch(console.error);
+          }
+          return updated;
+        }
+        return bill;
+      });
+
+      if (currentShopId) {
+        const keys = getTenantStorageKeys(currentShopId);
+        localStorage.setItem(keys.BILLS, JSON.stringify(next));
+      }
+      return next;
+    });
+    sounds.playCash();
   };
 
   // Unmerge / Separate grouped bills (ยกเลิกการรวมบิล)
@@ -1977,6 +2072,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         deleteSaleBill,
         mergeSaleBills,
         unmergeSaleBills,
+        updateMergedGroupPayment,
         expenses,
         addExpense,
         updateExpense,

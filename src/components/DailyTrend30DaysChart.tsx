@@ -32,6 +32,7 @@ import {
 } from 'lucide-react';
 import { SaleBill, ShopExpense, Barber, ShopSettings } from '../types';
 import { sounds } from '../utils/sound';
+import { calculateBillTransactionMetrics } from '../utils/billGrouping';
 
 interface DailyTrend30DaysChartProps {
   bills: SaleBill[];
@@ -208,7 +209,7 @@ export const DailyTrend30DaysChart: React.FC<DailyTrend30DaysChartProps> = ({
         transferAmount,
         cashAmount,
         customerPayments,
-        billCount: dayBills.length,
+        billCount: calculateBillTransactionMetrics(dayBills).totalPaymentBills,
         haircutCount,
         movingAvg7: 0, // Computed below
       });

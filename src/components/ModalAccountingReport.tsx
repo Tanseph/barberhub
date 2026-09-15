@@ -1,10 +1,11 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import { SaleBill, Barber } from '../types';
 import { X, Printer, Download, FileText, CheckCircle2, FileDown, Loader2 } from 'lucide-react';
 import { sounds } from '../utils/sound';
 import { exportReportToPDF } from '../utils/pdfExport';
 import { getBillingCycleInfo, isDateInBillingCycle } from '../utils/billingCycle';
+import { calculateBillTransactionMetrics, getBillMergedInfo } from '../utils/billGrouping';
 
 interface ModalAccountingReportProps {
   isOpen: boolean;
@@ -44,6 +45,11 @@ export const ModalAccountingReport: React.FC<ModalAccountingReportProps> = ({
   const isDark = theme.isDark ?? true;
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
   const reportRef = useRef<HTMLDivElement>(null);
+
+  // Grouped bills and transaction metrics (merged bills count as 1 payment transaction)
+  const transactionMetrics = useMemo(() => {
+    return calculateBillTransactionMetrics(periodBills);
+  }, [periodBills]);
 
   if (!isOpen) return null;
 
@@ -85,10 +91,13 @@ export const ModalAccountingReport: React.FC<ModalAccountingReportProps> = ({
 
   const totalCash = periodBills.reduce((s, b) => s + b.cashAmount, 0);
   const totalTransfer = periodBills.reduce((s, b) => s + b.transferAmount, 0);
-  const totalHeads = periodBills.reduce((s, b) => s + (b.haircutFee > 0 ? (b.headCount && b.headCount > 0 ? b.headCount : 1) : 0), 0);
-  const totalBills = periodBills.length;
-  const transferBillCount = periodBills.filter((b) => b.paymentMethod === 'transfer' || (b.paymentMethod === 'split' && b.transferAmount > 0)).length;
-  const cashBillCount = periodBills.filter((b) => b.paymentMethod === 'cash' || (b.paymentMethod === 'split' && b.cashAmount > 0)).length;
+
+  const totalHeads = transactionMetrics.totalHeads;
+  const totalPaymentBills = transactionMetrics.totalPaymentBills;
+  const totalBills = totalPaymentBills;
+  const totalRawBills = transactionMetrics.totalServicesCount;
+  const transferBillCount = transactionMetrics.transferBillCount;
+  const cashBillCount = transactionMetrics.cashBillCount;
 
   const hasAddress = Boolean(settings.shopAddress && settings.shopAddress.trim() !== '' && !settings.shopAddress.includes('ทองหล่อ'));
   const hasPhone = Boolean(settings.shopPhone && settings.shopPhone.trim() !== '' && !settings.shopPhone.includes('02-888-9999'));
@@ -258,28 +267,35 @@ export const ModalAccountingReport: React.FC<ModalAccountingReportProps> = ({
       'หมายเหตุ',
     ];
 
-    const rows = periodBills.map((b) => [
-      b.billNumber,
-      b.dateStr,
-      b.timeStr,
-      `"${b.customerName.replace(/"/g, '""')}"`,
-      b.customerPhone || '',
-      `"${b.barberName.replace(/"/g, '""')}"`,
-      b.haircutFee,
-      b.chemicalFee,
-      b.totalProductsFee,
-      b.tipFee,
-      b.haircutDiscountAmount || 0,
-      b.voucherDiscountAmount || 0,
-      b.grossTotal,
-      b.paymentMethod === 'transfer' ? 'เงินโอน' : b.paymentMethod === 'cash' ? 'เงินสด' : 'สลับ (สด+โอน)',
-      b.cashAmount,
-      b.transferAmount,
-      b.commission.barberTotalEarned,
-      b.commission.shopNetEarned,
-      b.mergedGroupId ? `รวมบิลกลุ่ม #${b.mergedGroupId.slice(-4)}` : 'บิลเดี่ยว',
-      `"${(b.notes || '').replace(/"/g, '""')}"`,
-    ]);
+    const rows = periodBills.map((b) => {
+      const mergedInfo = getBillMergedInfo(b, periodBills);
+      const mergeStatusStr = mergedInfo.isMerged
+        ? `รวมชำระคู่กับ ${mergedInfo.partnerBillNumbers.map((n) => `#${n}`).join(', ')} (${mergedInfo.partnerCustomerNames.join(', ')})`
+        : 'บิลเดี่ยว';
+
+      return [
+        `"${b.billNumber}"`,
+        b.dateStr,
+        b.timeStr,
+        `"${b.customerName.replace(/"/g, '""')}"`,
+        b.customerPhone || '',
+        `"${b.barberName.replace(/"/g, '""')}"`,
+        b.haircutFee,
+        b.chemicalFee,
+        b.totalProductsFee,
+        b.tipFee,
+        b.haircutDiscountAmount || 0,
+        b.voucherDiscountAmount || 0,
+        b.grossTotal,
+        b.paymentMethod === 'transfer' ? 'เงินโอน' : b.paymentMethod === 'cash' ? 'เงินสด' : 'สลับ (สด+โอน)',
+        b.cashAmount,
+        b.transferAmount,
+        b.commission.barberTotalEarned,
+        b.commission.shopNetEarned,
+        `"${mergeStatusStr}"`,
+        `"${(b.notes || '').replace(/"/g, '""')}"`,
+      ];
+    });
 
     const csvContent = '\uFEFF' + [headers.join(','), ...rows.map((e) => e.join(','))].join('\n');
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -376,7 +392,7 @@ export const ModalAccountingReport: React.FC<ModalAccountingReportProps> = ({
           <div className="border-b pb-5 flex flex-col sm:flex-row justify-between items-start sm:items-end gap-4 border-slate-200 dark:border-zinc-800 print:border-black">
             <div>
               <div className="text-xl font-black tracking-tight">{settings.shopName}</div>
-              {(hasAddress || hasPhone || hasPromptPay) && (
+              {viewMode === 'daily' && (hasAddress || hasPhone || hasPromptPay) && (
                 <div className="text-xs text-slate-500 dark:text-zinc-400 print:text-gray-600 mt-1 space-y-0.5 font-mono">
                   {hasAddress && <div>ที่อยู่: {settings.shopAddress}</div>}
                   {hasPhone && <div>โทรศัพท์: {settings.shopPhone}</div>}
@@ -398,8 +414,10 @@ export const ModalAccountingReport: React.FC<ModalAccountingReportProps> = ({
           {/* Summary Strip: หัวลูกค้า & ช่องทางชำระเงิน */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-3.5 rounded-xl bg-slate-50 dark:bg-zinc-950/60 border border-slate-200 dark:border-zinc-800 print:bg-white print:border-black text-xs">
             <div className="flex flex-col">
-              <span className="text-[11px] text-slate-500 dark:text-zinc-400 font-semibold">✂️ จำนวนหัวลูกค้า:</span>
-              <span className="text-base font-black font-mono text-amber-600 dark:text-amber-400">{totalBills} หัว <span className="text-xs font-normal text-slate-500">(ตัดผม {totalHeads})</span></span>
+              <span className="text-[11px] text-slate-500 dark:text-zinc-400 font-semibold">✂️ จำนวนหัวลูกค้า & บิลชำระ:</span>
+              <span className="text-base font-black font-mono text-amber-600 dark:text-amber-400">
+                {totalHeads} หัว <span className="text-xs font-normal text-slate-500 font-sans">({totalPaymentBills} บิลชำระ{totalRawBills !== totalPaymentBills ? ` • ${totalRawBills} บริการ` : ''})</span>
+              </span>
             </div>
             <div className="flex flex-col">
               <span className="text-[11px] text-slate-500 dark:text-zinc-400 font-semibold">📱 ยอดเงินโอน ({transferBillCount} บิล):</span>
@@ -772,30 +790,81 @@ export const ModalAccountingReport: React.FC<ModalAccountingReportProps> = ({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-200 dark:divide-zinc-800 print:divide-black">
-                    {periodBills.map((b) => (
-                      <tr key={b.id}>
-                        <td className="py-2 px-3 font-mono">
-                          <span className="font-bold">{b.billNumber}</span>
-                          <span className="text-[10px] text-slate-400 dark:text-zinc-500 block">{b.dateStr} {b.timeStr} น.</span>
-                        </td>
-                        <td className="py-2 px-3 font-medium">{b.customerName}</td>
-                        <td className="py-2 px-3">{b.barberName}</td>
-                        <td className="py-2 px-3 text-right font-mono">{b.haircutFee > 0 ? `${settings.currencySymbol}${b.haircutFee.toLocaleString()}` : '-'}</td>
-                        <td className="py-2 px-3 text-right font-mono">{b.chemicalFee > 0 ? `${settings.currencySymbol}${b.chemicalFee.toLocaleString()}` : '-'}</td>
-                        <td className="py-2 px-3 text-right font-mono">{b.totalProductsFee > 0 ? `${settings.currencySymbol}${b.totalProductsFee.toLocaleString()}` : '-'}</td>
-                        <td className="py-2 px-3 text-right font-mono">{b.tipFee > 0 ? `${settings.currencySymbol}${b.tipFee.toLocaleString()}` : '-'}</td>
-                        <td className="py-2 px-3 text-right font-mono font-bold">{settings.currencySymbol}{b.grossTotal.toLocaleString()}</td>
-                        <td className="py-2 px-3 text-center">
-                          <span className="text-[10px] font-semibold">
-                            {b.paymentMethod === 'transfer' && '📱 โอนเงิน'}
-                            {b.paymentMethod === 'cash' && '💵 เงินสด'}
-                            {b.paymentMethod === 'split' && `🔀 สด ${b.cashAmount}/โอน ${b.transferAmount}`}
-                          </span>
-                        </td>
-                        <td className="py-2 px-3 text-right font-mono text-emerald-600 font-semibold">{settings.currencySymbol}{b.commission.barberTotalEarned.toLocaleString()}</td>
-                        <td className="py-2 px-3 text-right font-mono text-amber-600 font-semibold">{settings.currencySymbol}{b.commission.shopNetEarned.toLocaleString()}</td>
-                      </tr>
-                    ))}
+                    {periodBills.map((b) => {
+                      const mergedInfo = getBillMergedInfo(b, periodBills);
+
+                      return (
+                        <tr
+                          key={b.id}
+                          className={
+                            mergedInfo.isMerged
+                              ? 'bg-indigo-50/40 dark:bg-indigo-950/20 border-l-2 border-l-indigo-500'
+                              : ''
+                          }
+                        >
+                          <td className="py-2 px-3 font-mono">
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-bold text-slate-900 dark:text-white">{b.billNumber}</span>
+                              {mergedInfo.isMerged && (
+                                <span
+                                  className="text-[11px] text-indigo-500 font-bold"
+                                  title={`รวมชำระคู่กับ: ${mergedInfo.partnerBillNumbers.map((n) => `#${n}`).join(', ')}`}
+                                >
+                                  🔗
+                                </span>
+                              )}
+                            </div>
+                            {mergedInfo.isMerged && (
+                              <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 block mt-0.5">
+                                รวมชำระคู่กับ {mergedInfo.partnerBillNumbers.map((n) => `#${n}`).join(', ')}
+                              </span>
+                            )}
+                            <span className="text-[10px] text-slate-400 dark:text-zinc-500 block">
+                              {b.dateStr} {b.timeStr} น.
+                            </span>
+                          </td>
+                          <td className="py-2 px-3 font-medium">
+                            <div className="text-slate-900 dark:text-white">{b.customerName}</div>
+                            {mergedInfo.isMerged && (
+                              <div className="text-[10px] text-indigo-500">
+                                (คู่กับ: {mergedInfo.partnerCustomerNames.join(', ')})
+                              </div>
+                            )}
+                          </td>
+                          <td className="py-2 px-3">{b.barberName}</td>
+                          <td className="py-2 px-3 text-right font-mono">
+                            {b.haircutFee > 0
+                              ? `${settings.currencySymbol}${b.haircutFee.toLocaleString()}${b.headCount && b.headCount > 1 ? ` (${b.headCount}หัว)` : ''}`
+                              : '-'}
+                          </td>
+                          <td className="py-2 px-3 text-right font-mono">
+                            {b.chemicalFee > 0 ? `${settings.currencySymbol}${b.chemicalFee.toLocaleString()}` : '-'}
+                          </td>
+                          <td className="py-2 px-3 text-right font-mono">
+                            {b.totalProductsFee > 0 ? `${settings.currencySymbol}${b.totalProductsFee.toLocaleString()}` : '-'}
+                          </td>
+                          <td className="py-2 px-3 text-right font-mono">
+                            {b.tipFee > 0 ? `${settings.currencySymbol}${b.tipFee.toLocaleString()}` : '-'}
+                          </td>
+                          <td className="py-2 px-3 text-right font-mono font-bold text-slate-900 dark:text-white">
+                            {settings.currencySymbol}{b.grossTotal.toLocaleString()}
+                          </td>
+                          <td className="py-2 px-3 text-center">
+                            <span className="text-[10px] font-semibold">
+                              {b.paymentMethod === 'transfer' && '📱 โอนเงิน'}
+                              {b.paymentMethod === 'cash' && '💵 เงินสด'}
+                              {b.paymentMethod === 'split' && `🔀 สด ${b.cashAmount}/โอน ${b.transferAmount}`}
+                            </span>
+                          </td>
+                          <td className="py-2 px-3 text-right font-mono text-emerald-600 font-semibold">
+                            {settings.currencySymbol}{b.commission.barberTotalEarned.toLocaleString()}
+                          </td>
+                          <td className="py-2 px-3 text-right font-mono text-amber-600 font-semibold">
+                            {settings.currencySymbol}{b.commission.shopNetEarned.toLocaleString()}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
