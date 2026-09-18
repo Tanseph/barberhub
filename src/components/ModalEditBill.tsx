@@ -22,10 +22,10 @@ export const ModalEditBill: React.FC = () => {
   const [customerName, setCustomerName] = useState('');
   const [billDate, setBillDate] = useState('');
   const [billTime, setBillTime] = useState('');
-  const [haircutFee, setHaircutFee] = useState<number>(0);
+  const [haircutFee, setHaircutFee] = useState<string>('');
   const [headCount, setHeadCount] = useState<number>(1);
-  const [chemicalFee, setChemicalFee] = useState<number>(0);
-  const [tipFee, setTipFee] = useState<number>(0);
+  const [chemicalFee, setChemicalFee] = useState<string>('');
+  const [tipFee, setTipFee] = useState<string>('');
   const [hasHaircutPromo10, setHasHaircutPromo10] = useState<boolean>(false);
   const [voucherDiscount, setVoucherDiscount] = useState<number>(0);
   const [voucherCode, setVoucherCode] = useState<string>('');
@@ -41,10 +41,10 @@ export const ModalEditBill: React.FC = () => {
       setCustomerName(editingBill.customerName);
       setBillDate(editingBill.dateStr || '');
       setBillTime(editingBill.timeStr || '');
-      setHaircutFee(editingBill.haircutFee);
+      setHaircutFee(editingBill.haircutFee > 0 ? String(editingBill.haircutFee) : '');
       setHeadCount(editingBill.haircutFee > 0 ? (editingBill.headCount || 1) : 0);
-      setChemicalFee(editingBill.chemicalFee);
-      setTipFee(editingBill.tipFee);
+      setChemicalFee(editingBill.chemicalFee > 0 ? String(editingBill.chemicalFee) : '');
+      setTipFee(editingBill.tipFee > 0 ? String(editingBill.tipFee) : '');
       setHasHaircutPromo10(editingBill.hasHaircutDiscount10 ?? false);
       setVoucherDiscount(editingBill.voucherDiscountAmount ?? 0);
       setVoucherCode(editingBill.voucherCode || '');
@@ -229,9 +229,11 @@ export const ModalEditBill: React.FC = () => {
                 type="number"
                 min="0"
                 value={haircutFee}
+                onFocus={(e) => e.target.select()}
                 onChange={(e) => {
-                  const val = Number(e.target.value);
-                  setHaircutFee(val);
+                  const valStr = e.target.value;
+                  setHaircutFee(valStr);
+                  const val = Number(valStr) || 0;
                   if (val > 0 && headCount === 0) {
                     setHeadCount(1);
                   } else if (val === 0) {
@@ -272,7 +274,8 @@ export const ModalEditBill: React.FC = () => {
                 type="number"
                 min="0"
                 value={chemicalFee}
-                onChange={(e) => setChemicalFee(Number(e.target.value))}
+                onFocus={(e) => e.target.select()}
+                onChange={(e) => setChemicalFee(e.target.value)}
                 className={`${inputClass} font-semibold text-sky-600`}
               />
             </div>
@@ -284,7 +287,8 @@ export const ModalEditBill: React.FC = () => {
                 type="number"
                 min="0"
                 value={tipFee}
-                onChange={(e) => setTipFee(Number(e.target.value))}
+                onFocus={(e) => e.target.select()}
+                onChange={(e) => setTipFee(e.target.value)}
                 className={`${inputClass} font-semibold text-amber-600`}
               />
             </div>
@@ -467,8 +471,8 @@ export const ModalEditBill: React.FC = () => {
                     type="number"
                     min="0"
                     max={currentGross}
-                    placeholder="0"
                     value={cashAmount === 0 ? '' : cashAmount}
+                    onFocus={(e) => e.target.select()}
                     onChange={(e) => {
                       const val = e.target.value === '' ? 0 : Number(e.target.value) || 0;
                       setCashAmount(val);
@@ -485,8 +489,8 @@ export const ModalEditBill: React.FC = () => {
                     type="number"
                     min="0"
                     max={currentGross}
-                    placeholder="0"
                     value={transferAmount === 0 ? '' : transferAmount}
+                    onFocus={(e) => e.target.select()}
                     onChange={(e) => {
                       const val = e.target.value === '' ? 0 : Number(e.target.value) || 0;
                       setTransferAmount(val);
