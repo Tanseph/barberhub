@@ -36,7 +36,15 @@ import {
   ShieldCheck,
   Target,
   Check,
+  Trash2,
+  RefreshCw,
 } from 'lucide-react';
+
+export interface ExtraAdjustmentItem {
+  id: string;
+  name: string;
+  amount: number;
+}
 
 export interface BarberAdjustment {
   salaryType?: BarberSalaryType;
@@ -50,6 +58,13 @@ export interface BarberAdjustment {
   otherDeductions: number;
   socialSecurity: number;
   notes: string;
+  // โหมดกรอกตัวเลขเอง (Manual Mode)
+  isManualMode?: boolean;
+  manualBaseSalary?: number;
+  manualCommission?: number;
+  manualTip?: number;
+  extraEarnings?: ExtraAdjustmentItem[]; // ค่าอื่นๆ เพิ่มเข้ามานอกเหนือจากที่มี
+  extraDeductions?: ExtraAdjustmentItem[]; // รายการหักอื่นๆ เพิ่มเติม
 }
 
 export const TabPayslip: React.FC = () => {
@@ -100,7 +115,19 @@ export const TabPayslip: React.FC = () => {
   const getBarberAdjustment = (barberId: string, monthStr: string): BarberAdjustment => {
     const key = getAdjustmentKey(barberId, monthStr);
     const b = barbers.find((x) => x.id === barberId);
-    return adjustments[key] || {
+    const saved = adjustments[key];
+    if (saved) {
+      return {
+        ...saved,
+        isManualMode: !!saved.isManualMode,
+        manualBaseSalary: saved.manualBaseSalary !== undefined ? saved.manualBaseSalary : (saved.baseSalary ?? b?.baseSalary ?? 0),
+        manualCommission: saved.manualCommission !== undefined ? saved.manualCommission : 0,
+        manualTip: saved.manualTip !== undefined ? saved.manualTip : 0,
+        extraEarnings: saved.extraEarnings || [],
+        extraDeductions: saved.extraDeductions || [],
+      };
+    }
+    return {
       salaryType: b?.salaryType || 'guarantee_min',
       baseSalary: b?.baseSalary !== undefined ? b.baseSalary : 15000,
       positionAllowance: b?.positionAllowance || 0,
@@ -112,6 +139,12 @@ export const TabPayslip: React.FC = () => {
       otherDeductions: 0,
       socialSecurity: 0,
       notes: '',
+      isManualMode: false,
+      manualBaseSalary: b?.baseSalary !== undefined ? b.baseSalary : 15000,
+      manualCommission: 0,
+      manualTip: 0,
+      extraEarnings: [],
+      extraDeductions: [],
     };
   };
 
@@ -127,8 +160,12 @@ export const TabPayslip: React.FC = () => {
   };
 
   // Temp state for editing adjustments modal
+  const [tempIsManualMode, setTempIsManualMode] = useState<boolean>(false);
   const [tempSalaryType, setTempSalaryType] = useState<BarberSalaryType>('guarantee_min');
   const [tempBaseSalary, setTempBaseSalary] = useState<string>('15000');
+  const [tempManualBaseSalary, setTempManualBaseSalary] = useState<string>('0');
+  const [tempManualCommission, setTempManualCommission] = useState<string>('0');
+  const [tempManualTip, setTempManualTip] = useState<string>('0');
   const [tempPositionAllowance, setTempPositionAllowance] = useState<string>('0');
   const [tempCustomEarningName, setTempCustomEarningName] = useState<string>('');
   const [tempCustomEarningAmount, setTempCustomEarningAmount] = useState<string>('0');
@@ -139,6 +176,61 @@ export const TabPayslip: React.FC = () => {
   const [tempSocialSecurity, setTempSocialSecurity] = useState<string>('0');
   const [tempNotes, setTempNotes] = useState<string>('');
   const [tempSaveAsDefault, setTempSaveAsDefault] = useState<boolean>(true);
+
+  // Extra dynamic earnings and deductions (ค่าอื่นๆ เพิ่มเติม)
+  const [tempExtraEarnings, setTempExtraEarnings] = useState<ExtraAdjustmentItem[]>([]);
+  const [tempExtraDeductions, setTempExtraDeductions] = useState<ExtraAdjustmentItem[]>([]);
+
+  // Helpers for extra items
+  const handleAddExtraEarning = () => {
+    sounds.playClick();
+    setTempExtraEarnings((prev) => [
+      ...prev,
+      { id: `earn_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`, name: '', amount: 0 },
+    ]);
+  };
+
+  const handleUpdateExtraEarning = (id: string, field: 'name' | 'amount', value: string | number) => {
+    setTempExtraEarnings((prev) =>
+      prev.map((item) => {
+        if (item.id !== id) return item;
+        if (field === 'amount') {
+          return { ...item, amount: Number(value) || 0 };
+        }
+        return { ...item, [field]: value };
+      })
+    );
+  };
+
+  const handleRemoveExtraEarning = (id: string) => {
+    sounds.playClick();
+    setTempExtraEarnings((prev) => prev.filter((item) => item.id !== id));
+  };
+
+  const handleAddExtraDeduction = () => {
+    sounds.playClick();
+    setTempExtraDeductions((prev) => [
+      ...prev,
+      { id: `ded_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`, name: '', amount: 0 },
+    ]);
+  };
+
+  const handleUpdateExtraDeduction = (id: string, field: 'name' | 'amount', value: string | number) => {
+    setTempExtraDeductions((prev) =>
+      prev.map((item) => {
+        if (item.id !== id) return item;
+        if (field === 'amount') {
+          return { ...item, amount: Number(value) || 0 };
+        }
+        return { ...item, [field]: value };
+      })
+    );
+  };
+
+  const handleRemoveExtraDeduction = (id: string) => {
+    sounds.playClick();
+    setTempExtraDeductions((prev) => prev.filter((item) => item.id !== id));
+  };
 
   // Month navigation helpers
   const handleShiftMonth = (delta: number) => {
@@ -234,43 +326,75 @@ export const TabPayslip: React.FC = () => {
         : (barber.baseSalary !== undefined ? barber.baseSalary : 15000);
 
       // ==========================================
-      // กฎการคิดเงินเดือน (Salary & Guarantee Logic):
-      // "สมมุติ ฐานเงินเดือน 15000 แต่ทำยอดทั้งเดือนไม่ถึง 15000 ก็จะได้เงินเดือน 15000
-      // แต่ถ้าทำยอดได้มากกว่าฐานเงินเดือนก็จะได้ยอดตามที่ ทำได้เลย"
+      // กฎการคิดเงินเดือน (Salary & Commission Logic):
+      // รองรับทั้งโหมดอัตโนมัติ (Auto) และโหมดกรอกเอง (Manual)
       // ==========================================
-      let workEarnings = 0; // รายได้ส่วนผลงาน/เงินเดือนการันตี
-      let guaranteeTopUp = 0; // เงินชดเชยที่ร้านเติมให้ครบฐานการันตี
+      let effectiveBaseSalary = 0; // ฐานเงินเดือน
+      let commissionAboveBase = 0; // ค่าคอมมิชชั่น (ส่วนที่เกินมาจากฐานเงินเดือน)
+      let workEarnings = 0; // รวมรายได้ผลงาน/เงินเดือน
+      let guaranteeTopUp = 0; // เงินชดเชยที่ร้านเติมให้ครบฐาน (ถ้ามี)
       let isGuaranteeApplied = false; // ยอดคอมมิชชั่นไม่ถึงฐาน ร้านต้องเติมให้
+      let effectiveTip = tipTotal;
 
-      if (salaryType === 'guarantee_min') {
+      const isManualMode = !!adj.isManualMode;
+
+      if (isManualMode) {
+        // ในโหมด Manual ใช้ตัวเลขที่กรอกเองโดยตรง
+        effectiveBaseSalary = adj.manualBaseSalary !== undefined ? adj.manualBaseSalary : (baseSalary || 0);
+        commissionAboveBase = adj.manualCommission !== undefined ? adj.manualCommission : 0;
+        effectiveTip = adj.manualTip !== undefined ? adj.manualTip : tipTotal;
+        workEarnings = effectiveBaseSalary + commissionAboveBase;
+        guaranteeTopUp = 0;
+        isGuaranteeApplied = false;
+      } else if (salaryType === 'guarantee_min') {
+        effectiveBaseSalary = baseSalary;
         if (baseSalary > 0) {
-          if (totalCommission < baseSalary) {
-            workEarnings = baseSalary;
-            guaranteeTopUp = baseSalary - totalCommission;
-            isGuaranteeApplied = true;
-          } else {
-            workEarnings = totalCommission;
+          if (totalCommission > baseSalary) {
+            // ทำยอดเกินฐานเงินเดือน: ได้ฐานเงินเดือน + ส่วนเกินเป็นค่าคอมมิชชั่น
+            commissionAboveBase = totalCommission - baseSalary;
+            workEarnings = totalCommission; // เท่ากับ baseSalary + commissionAboveBase
             guaranteeTopUp = 0;
             isGuaranteeApplied = false;
+          } else {
+            // ทำยอดไม่ถึงหรือเท่ากับฐานเงินเดือน: ได้รับฐานเงินเดือนเต็มการันตี, ค่าคอมส่วนเกินเป็น 0
+            commissionAboveBase = 0;
+            workEarnings = baseSalary;
+            guaranteeTopUp = baseSalary - totalCommission;
+            isGuaranteeApplied = totalCommission < baseSalary;
           }
         } else {
+          // ฐานเงินเดือนเป็น 0 (คิดเป็นคอมมิชชั่นล้วน)
+          effectiveBaseSalary = 0;
+          commissionAboveBase = totalCommission;
           workEarnings = totalCommission;
           guaranteeTopUp = 0;
           isGuaranteeApplied = false;
         }
       } else if (salaryType === 'fixed_plus_commission') {
-        // เงินเดือนประจำคงที่ + คอมมิชชั่น
+        // เงินเดือนประจำคงที่ + คอมมิชชั่นผลงานทั้งหมด
+        effectiveBaseSalary = baseSalary;
+        commissionAboveBase = totalCommission;
         workEarnings = baseSalary + totalCommission;
         guaranteeTopUp = 0;
         isGuaranteeApplied = false;
       } else {
         // คอมมิชชั่นล้วน (commission_only)
+        effectiveBaseSalary = 0;
+        commissionAboveBase = totalCommission;
         workEarnings = totalCommission;
         guaranteeTopUp = 0;
         isGuaranteeApplied = false;
       }
 
-      // รายได้รวมทั้งหมด (Total Earnings) = workEarnings + ทิป 100% + ค่าตำแหน่ง + เงินพิเศษ + โบนัส + เงินช่วยเหลือ
+      // Extra dynamic earnings (ค่าอื่นๆ เพิ่มเข้ามานอกเหนือจากที่มี)
+      const extraEarnings: ExtraAdjustmentItem[] = adj.extraEarnings || [];
+      const sumExtraEarnings = extraEarnings.reduce((s, x) => s + (Number(x.amount) || 0), 0);
+
+      // Extra dynamic deductions (รายการหักอื่นๆ เพิ่มเติม)
+      const extraDeductions: ExtraAdjustmentItem[] = adj.extraDeductions || [];
+      const sumExtraDeductions = extraDeductions.reduce((s, x) => s + (Number(x.amount) || 0), 0);
+
+      // รายได้รวมทั้งหมด (Total Earnings)
       const bonus = adj.bonus || 0;
       const allowance = adj.allowance || 0;
       const positionAllowance = adj.positionAllowance !== undefined
@@ -283,12 +407,12 @@ export const TabPayslip: React.FC = () => {
         ? adj.customEarningAmount
         : (barber.customEarningAmount || 0);
 
-      const totalEarnings = workEarnings + tipTotal + bonus + allowance + positionAllowance + customEarningAmount;
+      const totalEarnings = workEarnings + effectiveTip + bonus + allowance + positionAllowance + customEarningAmount + sumExtraEarnings;
 
       // รายการหัก (Deductions)
       const otherDeductions = adj.otherDeductions || 0;
       const socialSecurity = adj.socialSecurity || 0;
-      const totalDeductions = effectiveAdvance + otherDeductions + socialSecurity;
+      const totalDeductions = effectiveAdvance + otherDeductions + socialSecurity + sumExtraDeductions;
 
       // สุทธิ (Net Pay)
       const netPay = Math.max(0, totalEarnings - totalDeductions);
@@ -297,9 +421,16 @@ export const TabPayslip: React.FC = () => {
         barber,
         salaryType,
         baseSalary,
+        isManualMode,
+        effectiveBaseSalary,
+        commissionAboveBase,
         positionAllowance,
         customEarningName,
         customEarningAmount,
+        extraEarnings,
+        extraDeductions,
+        sumExtraEarnings,
+        sumExtraDeductions,
         billCount: barberBills.length,
         haircutCount,
         haircutGross,
@@ -310,7 +441,8 @@ export const TabPayslip: React.FC = () => {
         productGross,
         productCommission,
         productItemsSold,
-        tipTotal,
+        tipTotal: effectiveTip,
+        rawTipTotal: tipTotal,
         totalRevenueGenerated,
         totalCommission,
         totalCommissionWithTips,
@@ -350,6 +482,8 @@ export const TabPayslip: React.FC = () => {
         totalHaircuts: acc.totalHaircuts + curr.haircutCount,
         totalAdvances: acc.totalAdvances + curr.effectiveAdvance,
         totalGuaranteeTopUp: acc.totalGuaranteeTopUp + curr.guaranteeTopUp,
+        totalBaseSalary: acc.totalBaseSalary + curr.effectiveBaseSalary,
+        totalCommissionAboveBase: acc.totalCommissionAboveBase + curr.commissionAboveBase,
       }),
       {
         totalNetPay: 0,
@@ -358,17 +492,39 @@ export const TabPayslip: React.FC = () => {
         totalHaircuts: 0,
         totalAdvances: 0,
         totalGuaranteeTopUp: 0,
+        totalBaseSalary: 0,
+        totalCommissionAboveBase: 0,
       }
     );
   }, [barberPayrollList]);
 
   // Open adjustment edit modal
-  const handleOpenEditAdjustments = (barber: Barber) => {
+  const handleOpenEditAdjustments = (barber: Barber, forceManualMode?: boolean) => {
     sounds.playClick();
     setEditingBarber(barber);
     const adj = getBarberAdjustment(barber.id, selectedMonth);
+    const currentPayroll = barberPayrollList.find((p) => p.barber.id === barber.id);
+
+    const isManual = forceManualMode !== undefined ? forceManualMode : !!adj.isManualMode;
+    setTempIsManualMode(isManual);
+
     setTempSalaryType(adj.salaryType || barber.salaryType || 'guarantee_min');
     setTempBaseSalary(String(adj.baseSalary !== undefined ? adj.baseSalary : (barber.baseSalary ?? 15000)));
+
+    const initialManualBase = adj.manualBaseSalary !== undefined
+      ? adj.manualBaseSalary
+      : (currentPayroll?.effectiveBaseSalary ?? (barber.baseSalary ?? 15000));
+    const initialManualComm = adj.manualCommission !== undefined
+      ? adj.manualCommission
+      : (currentPayroll?.commissionAboveBase ?? 0);
+    const initialManualTip = adj.manualTip !== undefined
+      ? adj.manualTip
+      : (currentPayroll?.tipTotal ?? 0);
+
+    setTempManualBaseSalary(String(initialManualBase));
+    setTempManualCommission(String(initialManualComm));
+    setTempManualTip(String(initialManualTip));
+
     setTempPositionAllowance(String(adj.positionAllowance !== undefined ? adj.positionAllowance : (barber.positionAllowance || 0)));
     setTempCustomEarningName(adj.customEarningName !== undefined ? adj.customEarningName : (barber.customEarningName || ''));
     setTempCustomEarningAmount(String(adj.customEarningAmount !== undefined ? adj.customEarningAmount : (barber.customEarningAmount || 0)));
@@ -378,8 +534,52 @@ export const TabPayslip: React.FC = () => {
     setTempOtherDeductions(String(adj.otherDeductions || 0));
     setTempSocialSecurity(String(adj.socialSecurity || 0));
     setTempNotes(adj.notes || '');
-    setTempSaveAsDefault(true);
+    setTempSaveAsDefault(!isManual);
+
+    // Load extra earnings & deductions
+    setTempExtraEarnings(adj.extraEarnings ? [...adj.extraEarnings] : []);
+    setTempExtraDeductions(adj.extraDeductions ? [...adj.extraDeductions] : []);
+
     setIsEditModalOpen(true);
+  };
+
+  // Copy values from Auto calculation into Manual fields
+  const handleCopyFromAuto = () => {
+    if (!editingBarber) return;
+    sounds.playSuccess();
+    const currentPayroll = barberPayrollList.find((p) => p.barber.id === editingBarber.id);
+    if (!currentPayroll) return;
+
+    setTempManualBaseSalary(String(currentPayroll.effectiveBaseSalary));
+    setTempManualCommission(String(currentPayroll.commissionAboveBase));
+    setTempManualTip(String(currentPayroll.tipTotal));
+    setTempPositionAllowance(String(currentPayroll.positionAllowance));
+    setTempBonus(String(currentPayroll.bonus));
+    setTempAllowance(String(currentPayroll.allowance));
+    setTempManualAdvance(String(currentPayroll.effectiveAdvance));
+    setTempSocialSecurity(String(currentPayroll.socialSecurity));
+    setTempOtherDeductions(String(currentPayroll.otherDeductions));
+
+    showToast(
+      'คัดลอกตัวเลขจากระบบเรียบร้อย ⚡',
+      'ดึงยอดฐานเงินเดือน, ค่าคอมมิชชั่น, ทิป และรายการหักมาใส่ให้พร้อมแก้ไข',
+      'info'
+    );
+  };
+
+  // Switch barber back to Auto mode from UI
+  const handleSwitchToAuto = (barberId: string) => {
+    sounds.playSuccess();
+    const currentAdj = getBarberAdjustment(barberId, selectedMonth);
+    saveAdjustment(barberId, selectedMonth, {
+      ...currentAdj,
+      isManualMode: false,
+    });
+    showToast(
+      'สลับเป็นโหมดคำนวณอัตโนมัติเรียบร้อย 🔄',
+      'ระบบจะคำนวณเงินเดือนจากยอดบิลจริงในรอบเดือนนี้',
+      'success'
+    );
   };
 
   const handleSaveAdjustments = (e: React.FormEvent) => {
@@ -388,9 +588,21 @@ export const TabPayslip: React.FC = () => {
     sounds.playSuccess();
 
     const newBaseSalary = parseFloat(tempBaseSalary) || 0;
+    const newManualBase = parseFloat(tempManualBaseSalary) || 0;
+    const newManualComm = parseFloat(tempManualCommission) || 0;
+    const newManualTip = parseFloat(tempManualTip) || 0;
     const newPositionAllowance = parseFloat(tempPositionAllowance) || 0;
     const newCustomAmount = parseFloat(tempCustomEarningAmount) || 0;
     const newCustomName = tempCustomEarningName.trim();
+
+    // Clean extra earnings and deductions
+    const cleanExtraEarnings = tempExtraEarnings
+      .filter((item) => item.name.trim() !== '' || item.amount > 0)
+      .map((item) => ({ ...item, name: item.name.trim(), amount: Number(item.amount) || 0 }));
+
+    const cleanExtraDeductions = tempExtraDeductions
+      .filter((item) => item.name.trim() !== '' || item.amount > 0)
+      .map((item) => ({ ...item, name: item.name.trim(), amount: Number(item.amount) || 0 }));
 
     // Save adjustment for this month
     saveAdjustment(editingBarber.id, selectedMonth, {
@@ -405,10 +617,16 @@ export const TabPayslip: React.FC = () => {
       otherDeductions: parseFloat(tempOtherDeductions) || 0,
       socialSecurity: parseFloat(tempSocialSecurity) || 0,
       notes: tempNotes.trim(),
+      isManualMode: tempIsManualMode,
+      manualBaseSalary: newManualBase,
+      manualCommission: newManualComm,
+      manualTip: newManualTip,
+      extraEarnings: cleanExtraEarnings,
+      extraDeductions: cleanExtraDeductions,
     });
 
-    // Optionally update barber default profile
-    if (tempSaveAsDefault) {
+    // Optionally update barber default profile if not in manual mode
+    if (tempSaveAsDefault && !tempIsManualMode) {
       updateBarber(editingBarber.id, {
         salaryType: tempSalaryType,
         baseSalary: newBaseSalary,
@@ -420,8 +638,16 @@ export const TabPayslip: React.FC = () => {
 
     setIsEditModalOpen(false);
     showToast(
-      'บันทึกรายการปรับเงินเรียบร้อย 📝',
-      `อัปเดตสลิปของช่าง ${editingBarber.nickname} (${tempSalaryType === 'guarantee_min' ? `การันตี ฿${newBaseSalary.toLocaleString()}` : tempSalaryType === 'commission_only' ? 'คอมมิชชั่น 100%' : 'เงินเดือน+คอมมิชชั่น'}) เรียบร้อยแล้ว`,
+      tempIsManualMode ? 'บันทึกโหมด Manual สำเร็จ ✍️' : 'บันทึกรายการปรับเงินเรียบร้อย 📝',
+      `อัปเดตสลิปของช่าง ${editingBarber.nickname} (${
+        tempIsManualMode
+          ? 'โหมดกำหนดตัวเลขเอง'
+          : tempSalaryType === 'guarantee_min'
+          ? `การันตี ฿${newBaseSalary.toLocaleString()}`
+          : tempSalaryType === 'commission_only'
+          ? 'คอมมิชชั่น 100%'
+          : 'เงินเดือน+คอมมิชชั่น'
+      }) เรียบร้อยแล้ว`,
       'success'
     );
   };
@@ -745,53 +971,101 @@ export const TabPayslip: React.FC = () => {
                 {currentBarberData.barber.nickname.charAt(0)}
               </div>
               <div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <h3 className={`text-sm sm:text-base font-bold ${headingText}`}>
                     สลิปเงินเดือน: ช่าง {currentBarberData.barber.name} ({currentBarberData.barber.nickname})
                   </h3>
+                  {currentBarberData.isManualMode ? (
+                    <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-violet-500/20 text-violet-400 border border-violet-500/30 flex items-center gap-1">
+                      <Edit3 className="w-3 h-3" />
+                      <span>โหมด Manual (กำหนดตัวเลขเอง)</span>
+                    </span>
+                  ) : (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-500 border border-emerald-500/30">
+                      คำนวณอัตโนมัติ
+                    </span>
+                  )}
                   <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-500 border border-emerald-500/30">
                     ยอดสุทธิ {settings.currencySymbol}{currentBarberData.netPay.toLocaleString()}
                   </span>
                 </div>
-                <p className={`text-xs ${mutedText}`}>
+                <p className={`text-xs ${mutedText} mt-0.5`}>
                   รอบบิล: {cycleInfo.label} ({cycleInfo.cutoffDescription})
                 </p>
               </div>
             </div>
 
             <div className="flex items-center gap-2 w-full sm:w-auto justify-end flex-wrap">
-              {/* Edit Adjustments Button */}
-              <button
-                type="button"
-                onClick={() => handleOpenEditAdjustments(currentBarberData.barber)}
-                className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold border transition-all btn-tactile ${
-                  isDark
-                    ? 'bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border-zinc-700'
-                    : 'bg-white hover:bg-slate-100 text-slate-800 border-slate-300 shadow-2xs'
-                }`}
-                title="แก้ไขฐานเงินเดือน, ค่าตำแหน่ง, โบนัส, หรือรายการพิเศษ"
-              >
-                <Edit3 className="w-3.5 h-3.5 text-amber-500" />
-                <span>ปรับเงินเดือน / ค่าตำแหน่ง / เงินพิเศษ</span>
-              </button>
+              {/* Manual Mode / Edit Buttons */}
+              {currentBarberData.isManualMode ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => handleOpenEditAdjustments(currentBarberData.barber, true)}
+                    className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold border transition-all btn-tactile bg-violet-600 hover:bg-violet-500 text-white border-violet-500 shadow-xs"
+                    title="แก้ไขตัวเลขและรายการในโหมด Manual"
+                  >
+                    <Edit3 className="w-3.5 h-3.5" />
+                    <span>แก้ไขตัวเลข (Manual)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSwitchToAuto(currentBarberData.barber.id)}
+                    className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium border transition-all btn-tactile ${
+                      isDark
+                        ? 'bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border-zinc-700'
+                        : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300'
+                    }`}
+                    title="ยกเลิกโหมด Manual และกลับไปใช้การคำนวณอัตโนมัติตามบิล"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" />
+                    <span>สลับเป็น Auto</span>
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => handleOpenEditAdjustments(currentBarberData.barber, true)}
+                    className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold border transition-all btn-tactile bg-violet-500/15 hover:bg-violet-500/25 text-violet-400 border-violet-500/40"
+                    title="เปิดโหมดกรอกตัวเลขเอง (Manual Mode) และเพิ่มค่าใช้จ่าย/รายได้อื่นๆ"
+                  >
+                    <Edit3 className="w-3.5 h-3.5 text-violet-400" />
+                    <span>โหมด Manual (กรอกตัวเลขเอง)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleOpenEditAdjustments(currentBarberData.barber, false)}
+                    className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold border transition-all btn-tactile ${
+                      isDark
+                        ? 'bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border-zinc-700'
+                        : 'bg-white hover:bg-slate-100 text-slate-800 border-slate-300 shadow-2xs'
+                    }`}
+                    title="ปรับฐานเงินเดือน, ค่าตำแหน่ง, โบนัส หรือรายการพิเศษ"
+                  >
+                    <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                    <span>ตั้งค่าเงินเดือน/โบนัส</span>
+                  </button>
+                </>
+              )}
 
               {/* Download Report PDF Button */}
               <button
                 type="button"
                 onClick={() => handleDownloadPdf(currentBarberData.barber.nickname)}
                 disabled={isGeneratingPdf}
-                className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-500 text-white transition-all shadow-md shadow-indigo-600/20 btn-tactile disabled:opacity-50"
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-500 text-white transition-all shadow-md shadow-indigo-600/20 btn-tactile disabled:opacity-50"
                 title="ดาวน์โหลดเป็นไฟล์ PDF คุณภาพสูง"
               >
                 <Download className="w-4 h-4" />
-                <span>{isGeneratingPdf ? 'กำลังจัดเตรียม PDF...' : 'Download Report PDF'}</span>
+                <span>{isGeneratingPdf ? 'กำลังเตรียม PDF...' : 'Download Report PDF'}</span>
               </button>
 
               {/* Print Button */}
               <button
                 type="button"
                 onClick={handlePrint}
-                className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold bg-amber-500 hover:bg-amber-400 text-zinc-950 transition-all shadow-md shadow-amber-500/20 btn-tactile"
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold bg-amber-500 hover:bg-amber-400 text-zinc-950 transition-all shadow-md shadow-amber-500/20 btn-tactile"
                 title="สั่งพิมพ์สลิปเงินเดือนออกเครื่องพิมพ์"
               >
                 <Printer className="w-4 h-4" />
@@ -871,21 +1145,21 @@ export const TabPayslip: React.FC = () => {
                     <div className="mt-0.5">
                       <span className="inline-flex items-center gap-1 font-bold text-amber-800 bg-amber-100/80 border border-amber-300 px-2 py-0.5 rounded text-[11px]">
                         <Target className="w-3 h-3 text-amber-700" />
-                        <span>การันตีรายได้ขั้นต่ำ</span>
+                        <span>ฐานการันตี {settings.currencySymbol}{currentBarberData.baseSalary.toLocaleString()}</span>
                       </span>
                     </div>
                   ) : currentBarberData.salaryType === 'fixed_plus_commission' ? (
                     <div className="mt-0.5">
                       <span className="inline-flex items-center gap-1 font-bold text-sky-800 bg-sky-100/80 border border-sky-300 px-2 py-0.5 rounded text-[11px]">
                         <ShieldCheck className="w-3 h-3 text-sky-700" />
-                        <span>เงินเดือนประจำ + คอมฯ</span>
+                        <span>เงินเดือน {settings.currencySymbol}{currentBarberData.baseSalary.toLocaleString()} + คอมฯ</span>
                       </span>
                     </div>
                   ) : (
                     <div className="mt-0.5">
                       <span className="inline-flex items-center gap-1 font-bold text-slate-700 bg-slate-200/80 border border-slate-300 px-2 py-0.5 rounded text-[11px]">
                         <Scissors className="w-3 h-3 text-slate-600" />
-                        <span>คอมมิชชั่นผลงาน</span>
+                        <span>คอมมิชชั่นผลงาน 100%</span>
                       </span>
                     </div>
                   )}
@@ -894,103 +1168,58 @@ export const TabPayslip: React.FC = () => {
 
               {/* Dual Column: Earnings Table & Deductions Table */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* 1. รายการได้ (Earnings) */}
+                {/* 1. รายการได้ */}
                 <div className="border border-slate-200 rounded-xl overflow-hidden flex flex-col justify-between">
                   <div>
                     <div className="bg-emerald-50 px-3.5 py-2 border-b border-slate-200 flex items-center justify-between">
                       <span className="font-bold text-xs text-emerald-900 flex items-center gap-1.5">
                         <TrendingUp className="w-3.5 h-3.5 text-emerald-600" />
-                        <span>1. รายการได้ (Earnings)</span>
+                        <span>1. รายการได้</span>
                       </span>
-                      <span className="text-[10px] text-emerald-700 font-semibold">จำนวนเงิน ({settings.currencySymbol})</span>
+                      <span className="text-[10px] text-emerald-700 font-semibold">จำนวนเงิน</span>
                     </div>
 
                     <table className="w-full text-xs">
                       <tbody className="divide-y divide-slate-100">
+                        {/* 1. ฐานเงินเดือน */}
                         <tr className="hover:bg-slate-50/50">
                           <td className="py-2.5 px-3">
-                            <div className="text-slate-800 font-medium">ส่วนแบ่งค่าตัดผม</div>
+                            <div className="text-slate-800 font-medium">ฐานเงินเดือน</div>
                           </td>
                           <td className="py-2.5 px-3 text-right font-mono font-bold text-slate-900">
-                            {settings.currencySymbol}{currentBarberData.haircutCommission.toLocaleString()}
+                            {settings.currencySymbol}{currentBarberData.effectiveBaseSalary.toLocaleString()}
                           </td>
                         </tr>
 
+                        {/* 2. ค่าคอมมิชชั่น */}
                         <tr className="hover:bg-slate-50/50">
                           <td className="py-2.5 px-3">
-                            <div className="text-slate-800 font-medium">ส่วนแบ่งเคมี / ดัด / ย้อม</div>
+                            <div className="text-slate-800 font-medium">ค่าคอมมิชชั่น</div>
                           </td>
                           <td className="py-2.5 px-3 text-right font-mono font-bold text-slate-900">
-                            {settings.currencySymbol}{currentBarberData.chemicalCommission.toLocaleString()}
+                            {settings.currencySymbol}{currentBarberData.commissionAboveBase.toLocaleString()}
                           </td>
                         </tr>
 
-                        <tr className="hover:bg-slate-50/50">
-                          <td className="py-2.5 px-3">
-                            <div className="text-slate-800 font-medium">คอมมิชชั่นขายสินค้า</div>
-                          </td>
-                          <td className="py-2.5 px-3 text-right font-mono font-bold text-slate-900">
-                            {settings.currencySymbol}{currentBarberData.productCommission.toLocaleString()}
-                          </td>
-                        </tr>
-
-                        {/* ยอดรวมคอมมิชชั่นผลงาน */}
-                        <tr className="bg-slate-100/70 border-t border-b border-slate-200">
-                          <td className="py-2 px-3">
-                            <span className="font-semibold text-[11px] text-slate-700">
-                              รวมคอมมิชชั่นผลงาน
-                            </span>
-                          </td>
-                          <td className="py-2 px-3 text-right font-mono font-bold text-slate-800 text-[11px]">
-                            {settings.currencySymbol}{currentBarberData.totalCommission.toLocaleString()}
-                          </td>
-                        </tr>
-
-                        {/* แถวแสดงผลตามกฎการันตีขั้นต่ำ / เงินเดือน */}
-                        {currentBarberData.salaryType === 'guarantee_min' && (
-                          <>
-                            {currentBarberData.isGuaranteeApplied && (
-                              <tr className="bg-emerald-50/70 border-b border-emerald-100">
-                                <td className="py-2.5 px-3">
-                                  <div className="font-bold text-emerald-900 flex items-center gap-1">
-                                    <Sparkles className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                                    <span>เงินชดเชยการันตีรายได้ขั้นต่ำ (Top-up)</span>
-                                  </div>
-                                </td>
-                                <td className="py-2.5 px-3 text-right font-mono font-bold text-emerald-700">
-                                  +{settings.currencySymbol}{currentBarberData.guaranteeTopUp.toLocaleString()}
-                                </td>
-                              </tr>
-                            )}
-                          </>
-                        )}
-
-                        {currentBarberData.salaryType === 'fixed_plus_commission' && currentBarberData.baseSalary > 0 && (
-                          <tr className="bg-sky-50/60 border-b border-sky-100">
-                            <td className="py-2.5 px-3">
-                              <div className="text-sky-900 font-medium">เงินเดือนประจำคงที่ (Fixed Base Salary)</div>
-                            </td>
-                            <td className="py-2.5 px-3 text-right font-mono font-bold text-sky-700">
-                              +{settings.currencySymbol}{currentBarberData.baseSalary.toLocaleString()}
-                            </td>
-                          </tr>
-                        )}
-
-                        {/* ค่าตำแหน่ง */}
+                        {/* 3. ค่าตำแหน่ง */}
                         {currentBarberData.positionAllowance > 0 && (
                           <tr className="hover:bg-slate-50/50">
-                            <td className="py-2.5 px-3 text-slate-800 font-medium">ค่าตำแหน่ง</td>
+                            <td className="py-2.5 px-3">
+                              <div className="text-slate-800 font-medium">ค่าตำแหน่ง</div>
+                            </td>
                             <td className="py-2.5 px-3 text-right font-mono font-bold text-emerald-600">
                               +{settings.currencySymbol}{currentBarberData.positionAllowance.toLocaleString()}
                             </td>
                           </tr>
                         )}
 
-                        {/* รายการเงินพิเศษที่กำหนดเอง */}
+                        {/* 4. รายการเงินพิเศษ */}
                         {currentBarberData.customEarningAmount > 0 && (
                           <tr className="hover:bg-slate-50/50">
-                            <td className="py-2.5 px-3 text-slate-800 font-medium">
-                              {currentBarberData.customEarningName || 'เงินพิเศษ / รายการพิเศษ'}
+                            <td className="py-2.5 px-3">
+                              <div className="text-slate-800 font-medium">
+                                {currentBarberData.customEarningName || 'เงินพิเศษ'}
+                              </div>
                             </td>
                             <td className="py-2.5 px-3 text-right font-mono font-bold text-emerald-600">
                               +{settings.currencySymbol}{currentBarberData.customEarningAmount.toLocaleString()}
@@ -998,60 +1227,81 @@ export const TabPayslip: React.FC = () => {
                           </tr>
                         )}
 
+                        {/* 5. เงินทิป */}
                         <tr className="hover:bg-slate-50/50">
                           <td className="py-2.5 px-3">
-                            <div className="text-slate-800 font-medium">เงินทิปจากลูกค้า (Tips)</div>
+                            <div className="text-slate-800 font-medium">เงินทิป</div>
                           </td>
                           <td className="py-2.5 px-3 text-right font-mono font-bold text-slate-900">
                             {settings.currencySymbol}{currentBarberData.tipTotal.toLocaleString()}
                           </td>
                         </tr>
 
+                        {/* 6. เบี้ยขยัน / โบนัส */}
                         {currentBarberData.bonus > 0 && (
                           <tr className="hover:bg-slate-50/50">
-                            <td className="py-2.5 px-3 text-slate-700">เบี้ยขยัน / โบนัส (Bonus)</td>
+                            <td className="py-2.5 px-3">
+                              <div className="text-slate-800 font-medium">เบี้ยขยัน / โบนัส</div>
+                            </td>
                             <td className="py-2.5 px-3 text-right font-mono font-bold text-emerald-600">
                               +{settings.currencySymbol}{currentBarberData.bonus.toLocaleString()}
                             </td>
                           </tr>
                         )}
 
+                        {/* 7. เงินช่วยเหลือ */}
                         {currentBarberData.allowance > 0 && (
                           <tr className="hover:bg-slate-50/50">
-                            <td className="py-2.5 px-3 text-slate-700">เงินช่วยเหลือ / ค่าครองชีพ</td>
+                            <td className="py-2.5 px-3">
+                              <div className="text-slate-800 font-medium">เงินช่วยเหลือ</div>
+                            </td>
                             <td className="py-2.5 px-3 text-right font-mono font-bold text-emerald-600">
                               +{settings.currencySymbol}{currentBarberData.allowance.toLocaleString()}
                             </td>
                           </tr>
                         )}
+
+                        {/* 8. รายการได้อื่นๆ เพิ่มเติม */}
+                        {currentBarberData.extraEarnings?.map((extra) => (
+                          extra.amount > 0 && (
+                            <tr key={extra.id} className="hover:bg-slate-50/50">
+                              <td className="py-2.5 px-3">
+                                <div className="text-slate-800 font-medium">{extra.name || 'รายได้เพิ่มเติม'}</div>
+                              </td>
+                              <td className="py-2.5 px-3 text-right font-mono font-bold text-emerald-600">
+                                +{settings.currencySymbol}{extra.amount.toLocaleString()}
+                              </td>
+                            </tr>
+                          )
+                        ))}
                       </tbody>
                     </table>
                   </div>
 
                   <div className="bg-emerald-50/70 p-3 border-t border-slate-200 flex justify-between items-center">
-                    <span className="font-bold text-xs text-emerald-950">รวมรายได้ทั้งหมด (Total Earnings)</span>
+                    <span className="font-bold text-xs text-emerald-950">รวมรายได้ทั้งหมด</span>
                     <span className="font-mono font-black text-sm text-emerald-700">
                       {settings.currencySymbol}{currentBarberData.totalEarnings.toLocaleString()}
                     </span>
                   </div>
                 </div>
 
-                {/* 2. รายการหัก (Deductions) */}
+                {/* 2. รายการหัก */}
                 <div className="border border-slate-200 rounded-xl overflow-hidden flex flex-col justify-between">
                   <div>
                     <div className="bg-rose-50 px-3.5 py-2 border-b border-slate-200 flex items-center justify-between">
                       <span className="font-bold text-xs text-rose-900 flex items-center gap-1.5">
                         <Minus className="w-3.5 h-3.5 text-rose-600" />
-                        <span>2. รายการหัก (Deductions)</span>
+                        <span>2. รายการหัก</span>
                       </span>
-                      <span className="text-[10px] text-rose-700 font-semibold">จำนวนเงิน ({settings.currencySymbol})</span>
+                      <span className="text-[10px] text-rose-700 font-semibold">จำนวนเงิน</span>
                     </div>
 
                     <table className="w-full text-xs">
                       <tbody className="divide-y divide-slate-100">
                         <tr className="hover:bg-slate-50/50">
                           <td className="py-2.5 px-3">
-                            <div className="text-slate-800 font-medium">หักเงินเบิกล่วงหน้า (Advance Wages)</div>
+                            <div className="text-slate-800 font-medium">หักเงินเบิกล่วงหน้า</div>
                           </td>
                           <td className="py-2.5 px-3 text-right font-mono font-bold text-rose-600">
                             {currentBarberData.effectiveAdvance > 0
@@ -1062,7 +1312,7 @@ export const TabPayslip: React.FC = () => {
 
                         {currentBarberData.socialSecurity > 0 && (
                           <tr className="hover:bg-slate-50/50">
-                            <td className="py-2 px-3 text-slate-700">ประกันสังคม / กองทุน</td>
+                            <td className="py-2 px-3 text-slate-800 font-medium">ประกันสังคม</td>
                             <td className="py-2 px-3 text-right font-mono font-bold text-rose-600">
                               -{settings.currencySymbol}{currentBarberData.socialSecurity.toLocaleString()}
                             </td>
@@ -1071,17 +1321,32 @@ export const TabPayslip: React.FC = () => {
 
                         {currentBarberData.otherDeductions > 0 && (
                           <tr className="hover:bg-slate-50/50">
-                            <td className="py-2 px-3 text-slate-700">ค่าปรับ / หักอื่นๆ (Other Deductions)</td>
+                            <td className="py-2 px-3 text-slate-800 font-medium">ค่าปรับ / หักอื่นๆ</td>
                             <td className="py-2 px-3 text-right font-mono font-bold text-rose-600">
                               -{settings.currencySymbol}{currentBarberData.otherDeductions.toLocaleString()}
                             </td>
                           </tr>
                         )}
 
+                        {/* รายการหักอื่นๆ เพิ่มเติม */}
+                        {currentBarberData.extraDeductions?.map((extra) => (
+                          extra.amount > 0 && (
+                            <tr key={extra.id} className="hover:bg-slate-50/50">
+                              <td className="py-2.5 px-3">
+                                <div className="text-slate-800 font-medium">{extra.name || 'รายการหักเพิ่มเติม'}</div>
+                              </td>
+                              <td className="py-2.5 px-3 text-right font-mono font-bold text-rose-600">
+                                -{settings.currencySymbol}{extra.amount.toLocaleString()}
+                              </td>
+                            </tr>
+                          )
+                        ))}
+
                         {/* Blank rows if deductions list is short */}
                         {currentBarberData.effectiveAdvance === 0 &&
                           currentBarberData.socialSecurity === 0 &&
-                          currentBarberData.otherDeductions === 0 && (
+                          currentBarberData.otherDeductions === 0 &&
+                          (currentBarberData.extraDeductions?.filter((e) => e.amount > 0).length ?? 0) === 0 && (
                             <tr>
                               <td colSpan={2} className="py-8 text-center text-slate-400 text-xs italic">
                                 ไม่มีรายการหักในรอบบิลนี้
@@ -1093,7 +1358,7 @@ export const TabPayslip: React.FC = () => {
                   </div>
 
                   <div className="bg-rose-50/70 p-3 border-t border-slate-200 flex justify-between items-center">
-                    <span className="font-bold text-xs text-rose-950">รวมรายการหัก (Total Deductions)</span>
+                    <span className="font-bold text-xs text-rose-950">รวมรายการหัก</span>
                     <span className="font-mono font-black text-sm text-rose-700">
                       {settings.currencySymbol}{currentBarberData.totalDeductions.toLocaleString()}
                     </span>
@@ -1185,11 +1450,11 @@ export const TabPayslip: React.FC = () => {
               <thead className={isDark ? 'bg-zinc-950 text-zinc-400 border-b border-zinc-800' : 'bg-slate-50 text-slate-600 border-b border-slate-200'}>
                 <tr>
                   <th className="py-3 px-3.5">ช่าง</th>
-                  <th className="py-3 px-2 text-center">โครงสร้างเงินเดือน</th>
+                  <th className="py-3 px-2 text-center">โครงสร้าง</th>
                   <th className="py-3 px-2 text-center">งานตัดผม</th>
-                  <th className="py-3 px-3 text-right">ยอดสร้างรายได้</th>
-                  <th className="py-3 px-3 text-right">คอมมิชชั่นจริง</th>
-                  <th className="py-3 px-2.5 text-right">ชดเชยการันตี</th>
+                  <th className="py-3 px-2.5 text-right font-bold text-amber-500">ฐานเงินเดือน</th>
+                  <th className="py-3 px-2.5 text-right">ยอดผลงานจริง</th>
+                  <th className="py-3 px-3 text-right font-bold text-indigo-400">ค่าคอมฯ (ส่วนเกินฐาน)</th>
                   <th className="py-3 px-2 text-right">ทิป</th>
                   <th className="py-3 px-2 text-right">เบิกล่วงหน้า</th>
                   <th className="py-3 px-3 text-right font-bold text-emerald-500">สุทธิต้องจ่าย</th>
@@ -1217,7 +1482,12 @@ export const TabPayslip: React.FC = () => {
                       </div>
                     </td>
                     <td className="py-3 px-2 text-center">
-                      {item.salaryType === 'guarantee_min' ? (
+                      {item.isManualMode ? (
+                        <span className="inline-flex items-center gap-1 font-bold text-[10px] px-2 py-0.5 rounded-full bg-violet-500/15 text-violet-400 border border-violet-500/30">
+                          <Edit3 className="w-2.5 h-2.5" />
+                          <span>กำหนดเอง (Manual)</span>
+                        </span>
+                      ) : item.salaryType === 'guarantee_min' ? (
                         <span className="inline-flex items-center gap-1 font-bold text-[10px] px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-500 border border-amber-500/30">
                           <Target className="w-2.5 h-2.5" />
                           <span>การันตี {settings.currencySymbol}{item.baseSalary.toLocaleString()}</span>
@@ -1237,25 +1507,36 @@ export const TabPayslip: React.FC = () => {
                     <td className="py-3 px-2 text-center font-mono font-semibold">
                       {item.haircutCount} หัว
                     </td>
-                    <td className="py-3 px-3 text-right font-mono">
-                      {settings.currencySymbol}{item.totalRevenueGenerated.toLocaleString()}
-                    </td>
-                    <td className="py-3 px-3 text-right font-mono text-amber-500 font-semibold">
-                      {settings.currencySymbol}{item.totalCommission.toLocaleString()}
+                    <td className="py-3 px-2.5 text-right font-mono font-bold text-amber-500">
+                      {item.effectiveBaseSalary > 0 ? (
+                        `${settings.currencySymbol}${item.effectiveBaseSalary.toLocaleString()}`
+                      ) : (
+                        <span className={mutedText}>-</span>
+                      )}
                     </td>
                     <td className="py-3 px-2.5 text-right font-mono">
+                      <div className="font-semibold text-slate-700 dark:text-zinc-200">
+                        {settings.currencySymbol}{item.totalCommission.toLocaleString()}
+                      </div>
+                      <div className={`text-[10px] ${mutedText}`}>
+                        ยอดบิล {settings.currencySymbol}{item.totalRevenueGenerated.toLocaleString()}
+                      </div>
+                    </td>
+                    <td className="py-3 px-3 text-right font-mono font-bold">
                       {item.salaryType === 'guarantee_min' ? (
-                        item.isGuaranteeApplied ? (
-                          <span className="font-bold text-emerald-500 bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20 text-[11px]">
-                            +{settings.currencySymbol}{item.guaranteeTopUp.toLocaleString()}
+                        item.commissionAboveBase > 0 ? (
+                          <span className="text-indigo-400 font-bold bg-indigo-500/10 px-2 py-0.5 rounded border border-indigo-500/20">
+                            +{settings.currencySymbol}{item.commissionAboveBase.toLocaleString()}
                           </span>
                         ) : (
-                          <span className="text-[10px] text-amber-400 font-medium bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20">
-                            ทะลุเป้า ✨
+                          <span className="text-zinc-400 font-normal text-[11px] bg-zinc-800/40 px-1.5 py-0.5 rounded">
+                            {settings.currencySymbol}0
                           </span>
                         )
                       ) : (
-                        <span className={`text-[10px] ${mutedText}`}>-</span>
+                        <span className="text-indigo-400 font-bold">
+                          +{settings.currencySymbol}{item.commissionAboveBase.toLocaleString()}
+                        </span>
                       )}
                     </td>
                     <td className="py-3 px-2 text-right font-mono text-emerald-500">
@@ -1306,17 +1587,17 @@ export const TabPayslip: React.FC = () => {
                 <tr>
                   <td className="py-3 px-3.5 font-bold">รวมทั้งหมด ({barbers.length} คน)</td>
                   <td className="py-3 px-2 text-center font-mono text-[10px] text-zinc-400">
-                    การันตียอดชดเชยรวม
+                    -
                   </td>
                   <td className="py-3 px-2 text-center font-mono">{overallStats.totalHaircuts} หัว</td>
-                  <td className="py-3 px-3 text-right font-mono">{settings.currencySymbol}{overallStats.totalRevenue.toLocaleString()}</td>
-                  <td className="py-3 px-3 text-right font-mono text-amber-500 font-bold">
+                  <td className="py-3 px-2.5 text-right font-mono text-amber-500 font-bold">
+                    {settings.currencySymbol}{overallStats.totalBaseSalary.toLocaleString()}
+                  </td>
+                  <td className="py-3 px-2.5 text-right font-mono text-slate-700 dark:text-zinc-300 font-semibold">
                     {settings.currencySymbol}{barberPayrollList.reduce((s, b) => s + b.totalCommission, 0).toLocaleString()}
                   </td>
-                  <td className="py-3 px-2.5 text-right font-mono text-emerald-500">
-                    {overallStats.totalGuaranteeTopUp > 0
-                      ? `+${settings.currencySymbol}${overallStats.totalGuaranteeTopUp.toLocaleString()}`
-                      : '-'}
+                  <td className="py-3 px-3 text-right font-mono text-indigo-400 font-bold">
+                    +{settings.currencySymbol}{overallStats.totalCommissionAboveBase.toLocaleString()}
                   </td>
                   <td className="py-3 px-2 text-right font-mono text-emerald-500">
                     {settings.currencySymbol}{barberPayrollList.reduce((s, b) => s + b.tipTotal, 0).toLocaleString()}
@@ -1341,45 +1622,95 @@ export const TabPayslip: React.FC = () => {
         const actualCommission = currentPayroll?.totalCommission ?? 0;
         const enteredBase = parseFloat(tempBaseSalary) || 0;
 
-        // Calculate preview
+        // Calculate preview for Auto Mode
+        let previewBaseSalary = 0;
+        let previewCommissionAbove = 0;
         let previewWorkEarn = 0;
-        let previewTopUp = 0;
         let previewExplanation = '';
 
         if (tempSalaryType === 'guarantee_min') {
+          previewBaseSalary = enteredBase;
           if (enteredBase > 0) {
-            if (actualCommission < enteredBase) {
-              previewWorkEarn = enteredBase;
-              previewTopUp = enteredBase - actualCommission;
-              previewExplanation = `ทำยอด ${settings.currencySymbol}${actualCommission.toLocaleString()} ไม่ถึงฐานการันตี ${settings.currencySymbol}${enteredBase.toLocaleString()} ➜ ร้านเติมชดเชยให้ +${settings.currencySymbol}${previewTopUp.toLocaleString()} (ได้รับเต็มฐานการันตี ${settings.currencySymbol}${enteredBase.toLocaleString()})`;
-            } else {
+            if (actualCommission > enteredBase) {
+              previewCommissionAbove = actualCommission - enteredBase;
               previewWorkEarn = actualCommission;
-              previewTopUp = 0;
-              previewExplanation = `ทำยอด ${settings.currencySymbol}${actualCommission.toLocaleString()} เกินฐานการันตี ${settings.currencySymbol}${enteredBase.toLocaleString()} ➜ ได้รับตามยอดที่ทำได้จริงเต็มจำนวน (${settings.currencySymbol}${actualCommission.toLocaleString()})`;
+              previewExplanation = `ฐานเงินเดือน ${settings.currencySymbol}${enteredBase.toLocaleString()} + ค่าคอมมิชชั่นส่วนที่เกินฐาน ${settings.currencySymbol}${previewCommissionAbove.toLocaleString()} ➜ รวม ${settings.currencySymbol}${previewWorkEarn.toLocaleString()}`;
+            } else {
+              previewCommissionAbove = 0;
+              previewWorkEarn = enteredBase;
+              const topUp = enteredBase - actualCommission;
+              previewExplanation = `ยอดผลงานบริการ ${settings.currencySymbol}${actualCommission.toLocaleString()} ไม่ถึงฐาน ➜ ร้านจ่ายฐานเงินเดือน ${settings.currencySymbol}${enteredBase.toLocaleString()} เต็มจำนวน (ชดเชย +${settings.currencySymbol}${topUp.toLocaleString()}, ค่าคอมฯ ส่วนเกิน = ${settings.currencySymbol}0)`;
             }
           } else {
             previewWorkEarn = actualCommission;
-            previewExplanation = `ไม่มีฐานการันตี ➜ ได้รับตามยอดคอมมิชชั่นจริง ${settings.currencySymbol}${actualCommission.toLocaleString()}`;
+            previewCommissionAbove = actualCommission;
+            previewExplanation = `ไม่มีฐานเงินเดือน ➜ ได้รับตามยอดคอมมิชชั่นจริง ${settings.currencySymbol}${actualCommission.toLocaleString()}`;
           }
         } else if (tempSalaryType === 'fixed_plus_commission') {
+          previewBaseSalary = enteredBase;
+          previewCommissionAbove = actualCommission;
           previewWorkEarn = enteredBase + actualCommission;
-          previewExplanation = `เงินเดือนประจำ ${settings.currencySymbol}${enteredBase.toLocaleString()} + คอมมิชชั่น ${settings.currencySymbol}${actualCommission.toLocaleString()} ➜ รวม ${settings.currencySymbol}${previewWorkEarn.toLocaleString()}`;
+          previewExplanation = `เงินเดือนประจำคงที่ ${settings.currencySymbol}${enteredBase.toLocaleString()} + ค่าคอมมิชชั่น ${settings.currencySymbol}${actualCommission.toLocaleString()} ➜ รวม ${settings.currencySymbol}${previewWorkEarn.toLocaleString()}`;
         } else {
+          previewBaseSalary = 0;
+          previewCommissionAbove = actualCommission;
           previewWorkEarn = actualCommission;
           previewExplanation = `คอมมิชชั่นล้วน 100% ➜ ได้รับตามยอดที่ทำได้จริง ${settings.currencySymbol}${actualCommission.toLocaleString()}`;
         }
 
+        // Preview numbers for Manual Mode
+        const manualBaseNum = parseFloat(tempManualBaseSalary) || 0;
+        const manualCommNum = parseFloat(tempManualCommission) || 0;
+        const manualTipNum = parseFloat(tempManualTip) || 0;
+        const posAllowanceNum = parseFloat(tempPositionAllowance) || 0;
+        const bonusNum = parseFloat(tempBonus) || 0;
+        const allowanceNum = parseFloat(tempAllowance) || 0;
+        const customEarnNum = parseFloat(tempCustomEarningAmount) || 0;
+        const extraEarnSum = tempExtraEarnings.reduce((s, x) => s + (Number(x.amount) || 0), 0);
+
+        const manualAdvanceNum = parseFloat(tempManualAdvance) || 0;
+        const socialSecurityNum = parseFloat(tempSocialSecurity) || 0;
+        const otherDeductionsNum = parseFloat(tempOtherDeductions) || 0;
+        const extraDedSum = tempExtraDeductions.reduce((s, x) => s + (Number(x.amount) || 0), 0);
+
+        const manualTotalEarnings =
+          manualBaseNum +
+          manualCommNum +
+          manualTipNum +
+          posAllowanceNum +
+          bonusNum +
+          allowanceNum +
+          customEarnNum +
+          extraEarnSum;
+        const manualTotalDeductions = manualAdvanceNum + socialSecurityNum + otherDeductionsNum + extraDedSum;
+        const manualNetPay = Math.max(0, manualTotalEarnings - manualTotalDeductions);
+
         return (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs overflow-y-auto">
-            <div className={`rounded-2xl max-w-lg w-full shadow-2xl overflow-hidden my-6 border ${
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-xs overflow-y-auto">
+            <div className={`rounded-2xl max-w-xl w-full shadow-2xl overflow-hidden my-6 border ${
               isDark ? 'bg-zinc-900 border-zinc-700 text-zinc-100' : 'bg-white border-slate-200 text-slate-900'
             }`}>
+              {/* Modal Header */}
               <div className={`flex items-center justify-between px-5 py-4 border-b ${borderSubtle}`}>
                 <div className="flex items-center gap-2">
-                  <Edit3 className="w-4 h-4 text-amber-500" />
+                  <div
+                    className="w-8 h-8 rounded-xl flex items-center justify-center font-bold text-white text-xs shadow-xs"
+                    style={{ backgroundColor: editingBarber.color || '#f59e0b' }}
+                  >
+                    {editingBarber.nickname.charAt(0)}
+                  </div>
                   <div>
-                    <h3 className="font-bold text-sm">
-                      ปรับเงินเดือน & ฐานการันตี: ช่าง {editingBarber.nickname}
+                    <h3 className="font-bold text-sm flex items-center gap-1.5">
+                      <span>จัดการเงินเดือน: ช่าง {editingBarber.nickname}</span>
+                      {tempIsManualMode ? (
+                        <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-violet-500/20 text-violet-400 border border-violet-500/30">
+                          โหมด Manual
+                        </span>
+                      ) : (
+                        <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-500/20 text-emerald-500 border border-emerald-500/30">
+                          โหมด Auto
+                        </span>
+                      )}
                     </h3>
                     <span className={`text-[10px] ${mutedText} block`}>
                       รอบประจำเดือน {cycleInfo.label}
@@ -1397,292 +1728,837 @@ export const TabPayslip: React.FC = () => {
                 </button>
               </div>
 
-              <form onSubmit={handleSaveAdjustments} className="p-5 space-y-4 text-xs">
-                {/* 1. Salary Type Selector */}
-                <div className="space-y-1.5">
-                  <label className="font-bold block text-slate-700 dark:text-zinc-200">
-                    รูปแบบการคิดเงินเดือน (Salary Structure)
-                  </label>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        sounds.playClick();
-                        setTempSalaryType('guarantee_min');
-                        if (parseFloat(tempBaseSalary) === 0) setTempBaseSalary('15000');
-                      }}
-                      className={`p-2.5 rounded-xl border text-left transition-all btn-tactile ${
-                        tempSalaryType === 'guarantee_min'
-                          ? 'border-amber-500 bg-amber-500/15 text-amber-500 shadow-xs'
-                          : isDark
-                          ? 'border-zinc-800 bg-zinc-950/60 text-zinc-400 hover:border-zinc-700'
-                          : 'border-slate-200 bg-slate-50 text-slate-600 hover:border-slate-300'
-                      }`}
-                    >
-                      <div className="font-bold text-xs flex items-center gap-1.5">
-                        <Target className="w-3.5 h-3.5" />
-                        <span>การันตีขั้นต่ำ</span>
-                      </div>
-                      <div className="text-[10px] opacity-80 mt-1">
-                        ไม่ถึงได้ฐาน เกินได้ตามจริง
-                      </div>
-                    </button>
+              {/* Mode Selector Tabs (Auto vs Manual) */}
+              <div className="p-3 bg-zinc-950/40 border-b border-zinc-800/60">
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      sounds.playClick();
+                      setTempIsManualMode(false);
+                    }}
+                    className={`py-2 px-3 rounded-xl border text-center transition-all btn-tactile ${
+                      !tempIsManualMode
+                        ? 'bg-amber-500 text-zinc-950 border-amber-500 font-bold shadow-xs'
+                        : isDark
+                        ? 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:border-zinc-700'
+                        : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'
+                    }`}
+                  >
+                    <div className="flex items-center justify-center gap-1.5 text-xs font-bold">
+                      <Sparkles className="w-3.5 h-3.5" />
+                      <span>⚡ คำนวณอัตโนมัติ (Auto)</span>
+                    </div>
+                    <div className="text-[10px] opacity-85 mt-0.5">
+                      คิดจากยอดบิลจริงตามสูตรการันตี
+                    </div>
+                  </button>
 
-                    <button
-                      type="button"
-                      onClick={() => {
-                        sounds.playClick();
-                        setTempSalaryType('commission_only');
-                      }}
-                      className={`p-2.5 rounded-xl border text-left transition-all btn-tactile ${
-                        tempSalaryType === 'commission_only'
-                          ? 'border-amber-500 bg-amber-500/15 text-amber-500 shadow-xs'
-                          : isDark
-                          ? 'border-zinc-800 bg-zinc-950/60 text-zinc-400 hover:border-zinc-700'
-                          : 'border-slate-200 bg-slate-50 text-slate-600 hover:border-slate-300'
-                      }`}
-                    >
-                      <div className="font-bold text-xs flex items-center gap-1.5">
-                        <Scissors className="w-3.5 h-3.5" />
-                        <span>คอมมิชชั่นล้วน</span>
-                      </div>
-                      <div className="text-[10px] opacity-80 mt-1">
-                        รับตามผลงาน 100%
-                      </div>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => {
-                        sounds.playClick();
-                        setTempSalaryType('fixed_plus_commission');
-                        if (parseFloat(tempBaseSalary) === 0) setTempBaseSalary('15000');
-                      }}
-                      className={`p-2.5 rounded-xl border text-left transition-all btn-tactile ${
-                        tempSalaryType === 'fixed_plus_commission'
-                          ? 'border-sky-500 bg-sky-500/15 text-sky-400 shadow-xs'
-                          : isDark
-                          ? 'border-zinc-800 bg-zinc-950/60 text-zinc-400 hover:border-zinc-700'
-                          : 'border-slate-200 bg-slate-50 text-slate-600 hover:border-slate-300'
-                      }`}
-                    >
-                      <div className="font-bold text-xs flex items-center gap-1.5">
-                        <ShieldCheck className="w-3.5 h-3.5" />
-                        <span>เงินเดือน+คอมฯ</span>
-                      </div>
-                      <div className="text-[10px] opacity-80 mt-1">
-                        เงินเดือนประจำ + คอมฯ
-                      </div>
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      sounds.playClick();
+                      setTempIsManualMode(true);
+                      setTempSaveAsDefault(false);
+                    }}
+                    className={`py-2 px-3 rounded-xl border text-center transition-all btn-tactile ${
+                      tempIsManualMode
+                        ? 'bg-violet-600 text-white border-violet-500 font-bold shadow-xs'
+                        : isDark
+                        ? 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:border-zinc-700'
+                        : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'
+                    }`}
+                  >
+                    <div className="flex items-center justify-center gap-1.5 text-xs font-bold">
+                      <Edit3 className="w-3.5 h-3.5" />
+                      <span>✍️ โหมด Manual (กรอกเอง)</span>
+                    </div>
+                    <div className="text-[10px] opacity-85 mt-0.5">
+                      กรอกตัวเลขเอง + เพิ่มค่าอื่นๆ ได้อิสระ
+                    </div>
+                  </button>
                 </div>
+              </div>
 
-                {/* 2. Base Salary / Guarantee Amount input + Presets */}
-                {tempSalaryType !== 'commission_only' && (
-                  <div className="space-y-1.5 p-3 rounded-xl bg-amber-500/5 border border-amber-500/20">
-                    <div className="flex items-center justify-between">
-                      <label className="font-bold text-amber-600 dark:text-amber-400">
-                        {tempSalaryType === 'guarantee_min'
-                          ? 'ฐานเงินเดือนการันตีขั้นต่ำ'
-                          : 'เงินเดือนประจำคงที่'} ({settings.currencySymbol})
-                      </label>
-                      <span className="text-[10px] text-zinc-400">
-                        เลือกด่วนหรือพิมพ์จำนวนเงิน
-                      </span>
+              <form onSubmit={handleSaveAdjustments} className="p-4 sm:p-5 space-y-4 text-xs max-h-[75vh] overflow-y-auto">
+                {/* ======================================================== */}
+                {/* TAB 1: MANUAL MODE */}
+                {/* ======================================================== */}
+                {tempIsManualMode ? (
+                  <div className="space-y-4">
+                    {/* Auto-fill helper box */}
+                    <div className="p-3 rounded-xl bg-violet-500/10 border border-violet-500/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5">
+                      <div>
+                        <div className="font-bold text-violet-400 flex items-center gap-1.5 text-xs">
+                          <Edit3 className="w-3.5 h-3.5" />
+                          <span>โหมดกรอกตัวเลขเอง (Manual Mode)</span>
+                        </div>
+                        <p className={`text-[11px] ${mutedText} mt-0.5`}>
+                          คุณสามารถพิมพ์ตัวเลขทุกช่องได้เองตามต้องการ พร้อมเพิ่มรายการได้/หักอื่นๆ ได้
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleCopyFromAuto}
+                        className="px-3 py-1.5 rounded-lg text-xs font-bold bg-violet-600 hover:bg-violet-500 text-white transition-all shadow-xs shrink-0 flex items-center gap-1.5 btn-tactile"
+                        title="ดึงตัวเลขจากการคำนวณจริงตามบิลมาใส่ในช่องกรอก เพื่อใช้เป็นจุดเริ่มต้นแก้ไข"
+                      >
+                        <RefreshCw className="w-3 h-3" />
+                        <span>ดึงตัวเลขจาก Auto</span>
+                      </button>
                     </div>
 
-                    <input
-                      type="number"
-                      min="0"
-                      step="500"
-                      value={tempBaseSalary}
-                      onChange={(e) => setTempBaseSalary(e.target.value)}
-                      className={`w-full px-3 py-2 rounded-xl border font-mono font-bold text-base focus:outline-none ${
-                        isDark ? 'bg-zinc-950 border-zinc-700 text-amber-400' : 'bg-white border-slate-300 text-amber-600'
-                      }`}
-                    />
+                    {/* Primary Manual Income Fields */}
+                    <div className="p-3.5 rounded-xl border border-emerald-500/30 bg-emerald-500/5 space-y-3">
+                      <div className="font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5 text-xs">
+                        <TrendingUp className="w-3.5 h-3.5" />
+                        <span>รายการได้หลัก (ฐานเงินเดือน & คอมมิชชั่น & ทิป)</span>
+                      </div>
 
-                    {/* Quick Presets */}
-                    <div className="flex items-center gap-1.5 flex-wrap pt-1">
-                      {['10000', '12000', '15000', '18000', '20000'].map((preset) => (
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                        {/* ฐานเงินเดือน */}
+                        <div className="space-y-1">
+                          <label className="font-semibold block text-slate-700 dark:text-zinc-300 text-[11px]">
+                            ฐานเงินเดือน ({settings.currencySymbol})
+                          </label>
+                          <input
+                            type="number"
+                            min="0"
+                            step="100"
+                            value={tempManualBaseSalary}
+                            onFocus={(e) => e.target.select()}
+                            onChange={(e) => setTempManualBaseSalary(e.target.value)}
+                            className={`w-full px-3 py-2 rounded-xl border font-mono font-bold text-sm focus:outline-none ${
+                              isDark ? 'bg-zinc-950 border-zinc-700 text-amber-400' : 'bg-white border-slate-300 text-amber-600'
+                            }`}
+                          />
+                        </div>
+
+                        {/* ค่าคอมมิชชั่น */}
+                        <div className="space-y-1">
+                          <label className="font-semibold block text-slate-700 dark:text-zinc-300 text-[11px]">
+                            ค่าคอมมิชชั่น ({settings.currencySymbol})
+                          </label>
+                          <input
+                            type="number"
+                            min="0"
+                            step="100"
+                            value={tempManualCommission}
+                            onFocus={(e) => e.target.select()}
+                            onChange={(e) => setTempManualCommission(e.target.value)}
+                            className={`w-full px-3 py-2 rounded-xl border font-mono font-bold text-sm focus:outline-none ${
+                              isDark ? 'bg-zinc-950 border-zinc-700 text-indigo-400' : 'bg-white border-slate-300 text-indigo-600'
+                            }`}
+                          />
+                        </div>
+
+                        {/* เงินทิป */}
+                        <div className="space-y-1">
+                          <label className="font-semibold block text-slate-700 dark:text-zinc-300 text-[11px]">
+                            เงินทิป ({settings.currencySymbol})
+                          </label>
+                          <input
+                            type="number"
+                            min="0"
+                            step="50"
+                            value={tempManualTip}
+                            onFocus={(e) => e.target.select()}
+                            onChange={(e) => setTempManualTip(e.target.value)}
+                            className={`w-full px-3 py-2 rounded-xl border font-mono font-bold text-sm focus:outline-none ${
+                              isDark ? 'bg-zinc-950 border-zinc-700 text-emerald-400' : 'bg-white border-slate-300 text-emerald-600'
+                            }`}
+                          />
+                        </div>
+                      </div>
+
+                      {/* Secondary allowances */}
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1">
+                        <div className="space-y-1">
+                          <label className={`font-medium block ${mutedText} text-[11px]`}>
+                            ค่าตำแหน่ง ({settings.currencySymbol})
+                          </label>
+                          <input
+                            type="number"
+                            min="0"
+                            value={tempPositionAllowance}
+                            onFocus={(e) => e.target.select()}
+                            onChange={(e) => setTempPositionAllowance(e.target.value)}
+                            className={`w-full px-3 py-2 rounded-xl border font-mono font-bold focus:outline-none ${
+                              isDark ? 'bg-zinc-950 border-zinc-700 text-white' : 'bg-white border-slate-200 text-slate-900'
+                            }`}
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className={`font-medium block ${mutedText} text-[11px]`}>
+                            เบี้ยขยัน / โบนัส ({settings.currencySymbol})
+                          </label>
+                          <input
+                            type="number"
+                            min="0"
+                            value={tempBonus}
+                            onFocus={(e) => e.target.select()}
+                            onChange={(e) => setTempBonus(e.target.value)}
+                            className={`w-full px-3 py-2 rounded-xl border font-mono font-bold focus:outline-none ${
+                              isDark ? 'bg-zinc-950 border-zinc-700 text-white' : 'bg-white border-slate-200 text-slate-900'
+                            }`}
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className={`font-medium block ${mutedText} text-[11px]`}>
+                            เงินช่วยเหลือ ({settings.currencySymbol})
+                          </label>
+                          <input
+                            type="number"
+                            min="0"
+                            value={tempAllowance}
+                            onFocus={(e) => e.target.select()}
+                            onChange={(e) => setTempAllowance(e.target.value)}
+                            className={`w-full px-3 py-2 rounded-xl border font-mono font-bold focus:outline-none ${
+                              isDark ? 'bg-zinc-950 border-zinc-700 text-white' : 'bg-white border-slate-200 text-slate-900'
+                            }`}
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* DYNAMIC EXTRA EARNINGS (ค่าอื่นๆ เพิ่มเข้ามานอกเหนือจากที่มี) */}
+                    <div className="p-3.5 rounded-xl border border-dashed border-emerald-500/40 bg-emerald-500/5 space-y-2.5">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <span className="font-bold text-emerald-500 flex items-center gap-1.5 text-xs">
+                            <Plus className="w-3.5 h-3.5" />
+                            <span>ค่าอื่นๆ เพิ่มเข้ามานอกเหนือจากที่มี (รายการได้เพิ่มเติม)</span>
+                          </span>
+                          <span className={`text-[10px] ${mutedText} block`}>
+                            เพิ่มได้ไม่จำกัด เช่น ค่าปิดร้าน, ค่าเดินทาง, ค่าสอนงาน, OT
+                          </span>
+                        </div>
                         <button
-                          key={preset}
+                          type="button"
+                          onClick={handleAddExtraEarning}
+                          className="px-2.5 py-1.5 rounded-lg text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white flex items-center gap-1 transition-all shadow-xs btn-tactile"
+                        >
+                          <Plus className="w-3 h-3" />
+                          <span>เพิ่มรายการได้</span>
+                        </button>
+                      </div>
+
+                      {tempExtraEarnings.length === 0 ? (
+                        <div className="py-2.5 text-center text-[11px] text-zinc-400 italic">
+                          ยังไม่มีรายการได้เพิ่มเติม (กด &quot;เพิ่มรายการได้&quot; เพื่อเพิ่มรายการใหม่)
+                        </div>
+                      ) : (
+                        <div className="space-y-2 pt-1">
+                          {tempExtraEarnings.map((item, idx) => (
+                            <div key={item.id} className="flex items-center gap-2">
+                              <input
+                                type="text"
+                                value={item.name}
+                                onChange={(e) => handleUpdateExtraEarning(item.id, 'name', e.target.value)}
+                                placeholder={`ชื่อรายการที่ ${idx + 1} เช่น ค่าปิดร้าน, OT`}
+                                className={`flex-1 px-3 py-2 rounded-xl border focus:outline-none text-xs ${
+                                  isDark ? 'bg-zinc-950 border-zinc-700 text-white' : 'bg-white border-slate-200 text-slate-900'
+                                }`}
+                              />
+                              <div className="w-32 relative">
+                                <input
+                                  type="number"
+                                  min="0"
+                                  value={item.amount === 0 ? '' : item.amount}
+                                  placeholder="0"
+                                  onFocus={(e) => e.target.select()}
+                                  onChange={(e) => handleUpdateExtraEarning(item.id, 'amount', e.target.value)}
+                                  className={`w-full px-3 py-2 rounded-xl border font-mono font-bold text-xs text-right focus:outline-none ${
+                                    isDark ? 'bg-zinc-950 border-zinc-700 text-emerald-400' : 'bg-white border-slate-200 text-emerald-600'
+                                  }`}
+                                />
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveExtraEarning(item.id)}
+                                className="p-2 rounded-xl text-rose-400 hover:bg-rose-500/20 transition-colors btn-tactile"
+                                title="ลบรายการนี้"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Primary Deductions */}
+                    <div className="p-3.5 rounded-xl border border-rose-500/30 bg-rose-500/5 space-y-3">
+                      <div className="font-bold text-rose-600 dark:text-rose-400 flex items-center gap-1.5 text-xs">
+                        <Minus className="w-3.5 h-3.5" />
+                        <span>รายการหักหลัก</span>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                        <div className="space-y-1">
+                          <label className="font-semibold block text-slate-700 dark:text-zinc-300 text-[11px]">
+                            หักเงินเบิกล่วงหน้า ({settings.currencySymbol})
+                          </label>
+                          <input
+                            type="number"
+                            min="0"
+                            value={tempManualAdvance}
+                            onFocus={(e) => e.target.select()}
+                            onChange={(e) => setTempManualAdvance(e.target.value)}
+                            className={`w-full px-3 py-2 rounded-xl border font-mono font-bold text-sm focus:outline-none ${
+                              isDark ? 'bg-zinc-950 border-zinc-700 text-rose-400' : 'bg-white border-slate-300 text-rose-600'
+                            }`}
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className="font-semibold block text-slate-700 dark:text-zinc-300 text-[11px]">
+                            ประกันสังคม ({settings.currencySymbol})
+                          </label>
+                          <input
+                            type="number"
+                            min="0"
+                            value={tempSocialSecurity}
+                            onFocus={(e) => e.target.select()}
+                            onChange={(e) => setTempSocialSecurity(e.target.value)}
+                            className={`w-full px-3 py-2 rounded-xl border font-mono font-bold text-sm focus:outline-none ${
+                              isDark ? 'bg-zinc-950 border-zinc-700 text-rose-400' : 'bg-white border-slate-300 text-rose-600'
+                            }`}
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className="font-semibold block text-slate-700 dark:text-zinc-300 text-[11px]">
+                            ค่าปรับ / หักอื่นๆ ({settings.currencySymbol})
+                          </label>
+                          <input
+                            type="number"
+                            min="0"
+                            value={tempOtherDeductions}
+                            onFocus={(e) => e.target.select()}
+                            onChange={(e) => setTempOtherDeductions(e.target.value)}
+                            className={`w-full px-3 py-2 rounded-xl border font-mono font-bold text-sm focus:outline-none ${
+                              isDark ? 'bg-zinc-950 border-zinc-700 text-rose-400' : 'bg-white border-slate-300 text-rose-600'
+                            }`}
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* DYNAMIC EXTRA DEDUCTIONS (รายการหักอื่นๆ เพิ่มเติม) */}
+                    <div className="p-3.5 rounded-xl border border-dashed border-rose-500/40 bg-rose-500/5 space-y-2.5">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <span className="font-bold text-rose-500 flex items-center gap-1.5 text-xs">
+                            <Plus className="w-3.5 h-3.5" />
+                            <span>รายการหักอื่นๆ เพิ่มเติม</span>
+                          </span>
+                          <span className={`text-[10px] ${mutedText} block`}>
+                            เพิ่มได้ไม่จำกัด เช่น ค่าของเสียหาย, หักมาสาย, เงินออมร้าน
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={handleAddExtraDeduction}
+                          className="px-2.5 py-1.5 rounded-lg text-xs font-bold bg-rose-600 hover:bg-rose-500 text-white flex items-center gap-1 transition-all shadow-xs btn-tactile"
+                        >
+                          <Plus className="w-3 h-3" />
+                          <span>เพิ่มรายการหัก</span>
+                        </button>
+                      </div>
+
+                      {tempExtraDeductions.length === 0 ? (
+                        <div className="py-2.5 text-center text-[11px] text-zinc-400 italic">
+                          ยังไม่มีรายการหักเพิ่มเติม
+                        </div>
+                      ) : (
+                        <div className="space-y-2 pt-1">
+                          {tempExtraDeductions.map((item, idx) => (
+                            <div key={item.id} className="flex items-center gap-2">
+                              <input
+                                type="text"
+                                value={item.name}
+                                onChange={(e) => handleUpdateExtraDeduction(item.id, 'name', e.target.value)}
+                                placeholder={`ชื่อรายการหักที่ ${idx + 1} เช่น ค่าของเสียหาย`}
+                                className={`flex-1 px-3 py-2 rounded-xl border focus:outline-none text-xs ${
+                                  isDark ? 'bg-zinc-950 border-zinc-700 text-white' : 'bg-white border-slate-200 text-slate-900'
+                                }`}
+                              />
+                              <div className="w-32 relative">
+                                <input
+                                  type="number"
+                                  min="0"
+                                  value={item.amount === 0 ? '' : item.amount}
+                                  placeholder="0"
+                                  onFocus={(e) => e.target.select()}
+                                  onChange={(e) => handleUpdateExtraDeduction(item.id, 'amount', e.target.value)}
+                                  className={`w-full px-3 py-2 rounded-xl border font-mono font-bold text-xs text-right focus:outline-none ${
+                                    isDark ? 'bg-zinc-950 border-zinc-700 text-rose-400' : 'bg-white border-slate-200 text-rose-600'
+                                  }`}
+                                />
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveExtraDeduction(item.id)}
+                                className="p-2 rounded-xl text-rose-400 hover:bg-rose-500/20 transition-colors btn-tactile"
+                                title="ลบรายการนี้"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Live Summary Box for Manual Mode */}
+                    <div className="p-3.5 rounded-xl bg-violet-500/10 border border-violet-500/30 flex items-center justify-between">
+                      <div>
+                        <span className="font-bold text-violet-400 block text-xs">
+                          สรุปยอดเงินเดือน (โหมด Manual)
+                        </span>
+                        <span className={`text-[11px] ${mutedText}`}>
+                          รวมได้ {settings.currencySymbol}{manualTotalEarnings.toLocaleString()} - รวมหัก {settings.currencySymbol}{manualTotalDeductions.toLocaleString()}
+                        </span>
+                      </div>
+                      <div className="text-right">
+                        <span className="text-[10px] text-zinc-400 block font-semibold">ยอดสุทธิต้องจ่าย</span>
+                        <span className="text-base sm:text-lg font-mono font-black text-emerald-400">
+                          {settings.currencySymbol}{manualNetPay.toLocaleString()}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  /* ======================================================== */
+                  /* TAB 2: AUTO MODE (Calculation based on Bills) */
+                  /* ======================================================== */
+                  <div className="space-y-4">
+                    {/* 1. Salary Type Selector */}
+                    <div className="space-y-1.5">
+                      <label className="font-bold block text-slate-700 dark:text-zinc-200">
+                        รูปแบบการคิดเงินเดือน (Salary Structure)
+                      </label>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                        <button
                           type="button"
                           onClick={() => {
                             sounds.playClick();
-                            setTempBaseSalary(preset);
+                            setTempSalaryType('guarantee_min');
+                            if (parseFloat(tempBaseSalary) === 0) setTempBaseSalary('15000');
                           }}
-                          className={`px-2 py-1 rounded-lg text-[11px] font-mono font-semibold border transition-all btn-tactile ${
-                            tempBaseSalary === preset
-                              ? 'bg-amber-500 text-zinc-950 border-amber-500'
+                          className={`p-2.5 rounded-xl border text-left transition-all btn-tactile ${
+                            tempSalaryType === 'guarantee_min'
+                              ? 'border-amber-500 bg-amber-500/15 text-amber-500 shadow-xs'
                               : isDark
-                              ? 'bg-zinc-800 text-zinc-300 border-zinc-700 hover:bg-zinc-700'
-                              : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                              ? 'border-zinc-800 bg-zinc-950/60 text-zinc-400 hover:border-zinc-700'
+                              : 'border-slate-200 bg-slate-50 text-slate-600 hover:border-slate-300'
                           }`}
                         >
-                          {settings.currencySymbol}{Number(preset).toLocaleString()}
+                          <div className="font-bold text-xs flex items-center gap-1.5">
+                            <Target className="w-3.5 h-3.5" />
+                            <span>การันตีขั้นต่ำ</span>
+                          </div>
+                          <div className="text-[10px] opacity-80 mt-1">
+                            ไม่ถึงได้ฐาน เกินได้ตามจริง
+                          </div>
                         </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            sounds.playClick();
+                            setTempSalaryType('commission_only');
+                          }}
+                          className={`p-2.5 rounded-xl border text-left transition-all btn-tactile ${
+                            tempSalaryType === 'commission_only'
+                              ? 'border-amber-500 bg-amber-500/15 text-amber-500 shadow-xs'
+                              : isDark
+                              ? 'border-zinc-800 bg-zinc-950/60 text-zinc-400 hover:border-zinc-700'
+                              : 'border-slate-200 bg-slate-50 text-slate-600 hover:border-slate-300'
+                          }`}
+                        >
+                          <div className="font-bold text-xs flex items-center gap-1.5">
+                            <Scissors className="w-3.5 h-3.5" />
+                            <span>คอมมิชชั่นล้วน</span>
+                          </div>
+                          <div className="text-[10px] opacity-80 mt-1">
+                            รับตามผลงาน 100%
+                          </div>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            sounds.playClick();
+                            setTempSalaryType('fixed_plus_commission');
+                            if (parseFloat(tempBaseSalary) === 0) setTempBaseSalary('15000');
+                          }}
+                          className={`p-2.5 rounded-xl border text-left transition-all btn-tactile ${
+                            tempSalaryType === 'fixed_plus_commission'
+                              ? 'border-sky-500 bg-sky-500/15 text-sky-400 shadow-xs'
+                              : isDark
+                              ? 'border-zinc-800 bg-zinc-950/60 text-zinc-400 hover:border-zinc-700'
+                              : 'border-slate-200 bg-slate-50 text-slate-600 hover:border-slate-300'
+                          }`}
+                        >
+                          <div className="font-bold text-xs flex items-center gap-1.5">
+                            <ShieldCheck className="w-3.5 h-3.5" />
+                            <span>เงินเดือน+คอมฯ</span>
+                          </div>
+                          <div className="text-[10px] opacity-80 mt-1">
+                            เงินเดือนประจำ + คอมฯ
+                          </div>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* 2. Base Salary / Guarantee Amount input + Presets */}
+                    {tempSalaryType !== 'commission_only' && (
+                      <div className="space-y-1.5 p-3 rounded-xl bg-amber-500/5 border border-amber-500/20">
+                        <div className="flex items-center justify-between">
+                          <label className="font-bold text-amber-600 dark:text-amber-400">
+                            {tempSalaryType === 'guarantee_min'
+                              ? 'ฐานเงินเดือนการันตีขั้นต่ำ'
+                              : 'เงินเดือนประจำคงที่'} ({settings.currencySymbol})
+                          </label>
+                          <span className="text-[10px] text-zinc-400">
+                            เลือกด่วนหรือพิมพ์จำนวนเงิน
+                          </span>
+                        </div>
+
+                        <input
+                          type="number"
+                          min="0"
+                          step="500"
+                          value={tempBaseSalary}
+                          onFocus={(e) => e.target.select()}
+                          onChange={(e) => setTempBaseSalary(e.target.value)}
+                          className={`w-full px-3 py-2 rounded-xl border font-mono font-bold text-base focus:outline-none ${
+                            isDark ? 'bg-zinc-950 border-zinc-700 text-amber-400' : 'bg-white border-slate-300 text-amber-600'
+                          }`}
+                        />
+
+                        {/* Quick Presets */}
+                        <div className="flex items-center gap-1.5 flex-wrap pt-1">
+                          {['10000', '12000', '15000', '18000', '20000'].map((preset) => (
+                            <button
+                              key={preset}
+                              type="button"
+                              onClick={() => {
+                                sounds.playClick();
+                                setTempBaseSalary(preset);
+                              }}
+                              className={`px-2 py-1 rounded-lg text-[11px] font-mono font-semibold border transition-all btn-tactile ${
+                                tempBaseSalary === preset
+                                  ? 'bg-amber-500 text-zinc-950 border-amber-500'
+                                  : isDark
+                                  ? 'bg-zinc-800 text-zinc-300 border-zinc-700 hover:bg-zinc-700'
+                                  : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                              }`}
+                            >
+                              {settings.currencySymbol}{Number(preset).toLocaleString()}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* 3. Live Preview of Guarantee Calculation */}
+                    <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-[11px] space-y-1.5">
+                      <div className="flex items-center justify-between font-bold text-emerald-600 dark:text-emerald-400">
+                        <span className="flex items-center gap-1">
+                          <Sparkles className="w-3.5 h-3.5" />
+                          <span>จำลองผลลัพธ์การคำนวณจริงเดือนนี้</span>
+                        </span>
+                        <span className="font-mono text-xs">
+                          คอมมิชชั่นสะสม: {settings.currencySymbol}{actualCommission.toLocaleString()}
+                        </span>
+                      </div>
+                      <p className="text-zinc-300 dark:text-zinc-300 text-[11px] leading-relaxed">
+                        {previewExplanation}
+                      </p>
+                    </div>
+
+                    {/* 4. Bonus & Allowances */}
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <label className="font-semibold block text-emerald-600 dark:text-emerald-400">
+                          เบี้ยขยัน / โบนัส ({settings.currencySymbol})
+                        </label>
+                        <input
+                          type="number"
+                          min="0"
+                          value={tempBonus}
+                          onFocus={(e) => e.target.select()}
+                          onChange={(e) => setTempBonus(e.target.value)}
+                          className={`w-full px-3 py-2 rounded-xl border font-mono font-bold focus:outline-none ${
+                            isDark ? 'bg-zinc-950 border-zinc-700 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'
+                          }`}
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="font-semibold block text-emerald-600 dark:text-emerald-400">
+                          ค่าตำแหน่ง ({settings.currencySymbol})
+                        </label>
+                        <input
+                          type="number"
+                          min="0"
+                          value={tempPositionAllowance}
+                          onFocus={(e) => e.target.select()}
+                          onChange={(e) => setTempPositionAllowance(e.target.value)}
+                          placeholder="เช่น 1,000 หรือ 2,000"
+                          className={`w-full px-3 py-2 rounded-xl border font-mono font-bold focus:outline-none ${
+                            isDark ? 'bg-zinc-950 border-zinc-700 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'
+                          }`}
+                        />
+                      </div>
+                    </div>
+
+                    {/* 4.1 Custom Extra Allowance */}
+                    <div className="p-3 rounded-xl border space-y-2 bg-slate-50/50 dark:bg-zinc-900/50 border-slate-200 dark:border-zinc-800">
+                      <div className="font-semibold text-emerald-600 dark:text-emerald-400 flex items-center justify-between">
+                        <span>เงินพิเศษ / รายการรายได้เพิ่มเติม</span>
+                        <span className="text-[10px] text-zinc-400">ระบุชื่อและยอดเงิน</span>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                        <div className="space-y-1">
+                          <label className={`block text-[11px] ${mutedText}`}>
+                            ชื่อรายการเงินพิเศษ
+                          </label>
+                          <input
+                            type="text"
+                            value={tempCustomEarningName}
+                            onChange={(e) => setTempCustomEarningName(e.target.value)}
+                            placeholder="เช่น ค่าปิดร้าน, ค่าเดินทาง, OT"
+                            className={`w-full px-3 py-2 rounded-xl border focus:outline-none ${
+                              isDark ? 'bg-zinc-950 border-zinc-700 text-white' : 'bg-white border-slate-200 text-slate-900'
+                            }`}
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className={`block text-[11px] ${mutedText}`}>
+                            จำนวนเงิน ({settings.currencySymbol})
+                          </label>
+                          <input
+                            type="number"
+                            min="0"
+                            value={tempCustomEarningAmount}
+                            onFocus={(e) => e.target.select()}
+                            onChange={(e) => setTempCustomEarningAmount(e.target.value)}
+                            placeholder="0"
+                            className={`w-full px-3 py-2 rounded-xl border font-mono font-bold focus:outline-none ${
+                              isDark ? 'bg-zinc-950 border-zinc-700 text-white' : 'bg-white border-slate-200 text-slate-900'
+                            }`}
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="font-semibold block text-emerald-600 dark:text-emerald-400">
+                        ค่าครองชีพ / อื่นๆ ({settings.currencySymbol})
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={tempAllowance}
+                        onFocus={(e) => e.target.select()}
+                        onChange={(e) => setTempAllowance(e.target.value)}
+                        className={`w-full px-3 py-2 rounded-xl border font-mono font-bold focus:outline-none ${
+                          isDark ? 'bg-zinc-950 border-zinc-700 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'
+                        }`}
+                      />
+                    </div>
+
+                    {/* DYNAMIC EXTRA EARNINGS (also accessible in Auto mode) */}
+                    <div className="p-3 rounded-xl border border-dashed border-emerald-500/40 bg-emerald-500/5 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <span className="font-bold text-emerald-500 flex items-center gap-1.5 text-xs">
+                            <Plus className="w-3.5 h-3.5" />
+                            <span>ค่าอื่นๆ เพิ่มเข้ามานอกเหนือจากที่มี</span>
+                          </span>
+                          <span className={`text-[10px] ${mutedText} block`}>
+                            เพิ่มรายการได้หลายรายการได้อิสระ
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={handleAddExtraEarning}
+                          className="px-2.5 py-1 rounded-lg text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white flex items-center gap-1 transition-all shadow-xs btn-tactile"
+                        >
+                          <Plus className="w-3 h-3" />
+                          <span>เพิ่มรายการได้</span>
+                        </button>
+                      </div>
+
+                      {tempExtraEarnings.map((item, idx) => (
+                        <div key={item.id} className="flex items-center gap-2">
+                          <input
+                            type="text"
+                            value={item.name}
+                            onChange={(e) => handleUpdateExtraEarning(item.id, 'name', e.target.value)}
+                            placeholder={`ชื่อรายการ เช่น ค่าสอนงาน`}
+                            className={`flex-1 px-3 py-1.5 rounded-xl border focus:outline-none text-xs ${
+                              isDark ? 'bg-zinc-950 border-zinc-700 text-white' : 'bg-white border-slate-200 text-slate-900'
+                            }`}
+                          />
+                          <div className="w-28 relative">
+                            <input
+                              type="number"
+                              min="0"
+                              value={item.amount === 0 ? '' : item.amount}
+                              placeholder="0"
+                              onFocus={(e) => e.target.select()}
+                              onChange={(e) => handleUpdateExtraEarning(item.id, 'amount', e.target.value)}
+                              className={`w-full px-3 py-1.5 rounded-xl border font-mono font-bold text-xs text-right focus:outline-none ${
+                                isDark ? 'bg-zinc-950 border-zinc-700 text-emerald-400' : 'bg-white border-slate-200 text-emerald-600'
+                              }`}
+                            />
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveExtraEarning(item.id)}
+                            className="p-1.5 rounded-xl text-rose-400 hover:bg-rose-500/20 transition-colors btn-tactile"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       ))}
                     </div>
+
+                    {/* 5. Deductions */}
+                    <div className="border-t border-zinc-800/40 pt-3 space-y-3">
+                      <div className="space-y-1">
+                        <label className="font-semibold block text-rose-600 dark:text-rose-400">
+                          หักเงินเบิกล่วงหน้า (ระบุเองเพื่อแทนที่ค่าตรวจพบอัตโนมัติ) ({settings.currencySymbol})
+                        </label>
+                        <input
+                          type="number"
+                          min="0"
+                          value={tempManualAdvance}
+                          onFocus={(e) => e.target.select()}
+                          onChange={(e) => setTempManualAdvance(e.target.value)}
+                          placeholder="0 = ใช้ยอดเบิกตามระบบบันทึกรายจ่าย"
+                          className={`w-full px-3 py-2 rounded-xl border font-mono font-bold focus:outline-none ${
+                            isDark ? 'bg-zinc-950 border-zinc-700 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'
+                          }`}
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1">
+                          <label className="font-semibold block text-rose-600 dark:text-rose-400">
+                            ประกันสังคม ({settings.currencySymbol})
+                          </label>
+                          <input
+                            type="number"
+                            min="0"
+                            value={tempSocialSecurity}
+                            onFocus={(e) => e.target.select()}
+                            onChange={(e) => setTempSocialSecurity(e.target.value)}
+                            className={`w-full px-3 py-2 rounded-xl border font-mono font-bold focus:outline-none ${
+                              isDark ? 'bg-zinc-950 border-zinc-700 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'
+                            }`}
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className="font-semibold block text-rose-600 dark:text-rose-400">
+                            ค่าปรับ / หักอื่นๆ ({settings.currencySymbol})
+                          </label>
+                          <input
+                            type="number"
+                            min="0"
+                            value={tempOtherDeductions}
+                            onFocus={(e) => e.target.select()}
+                            onChange={(e) => setTempOtherDeductions(e.target.value)}
+                            className={`w-full px-3 py-2 rounded-xl border font-mono font-bold focus:outline-none ${
+                              isDark ? 'bg-zinc-950 border-zinc-700 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'
+                            }`}
+                          />
+                        </div>
+                      </div>
+
+                      {/* DYNAMIC EXTRA DEDUCTIONS (in Auto mode) */}
+                      <div className="p-3 rounded-xl border border-dashed border-rose-500/40 bg-rose-500/5 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <span className="font-bold text-rose-500 flex items-center gap-1.5 text-xs">
+                              <Plus className="w-3.5 h-3.5" />
+                              <span>รายการหักอื่นๆ เพิ่มเติม</span>
+                            </span>
+                            <span className={`text-[10px] ${mutedText} block`}>
+                              เพิ่มรายการหักนอกเหนือจากที่มี
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={handleAddExtraDeduction}
+                            className="px-2.5 py-1 rounded-lg text-xs font-bold bg-rose-600 hover:bg-rose-500 text-white flex items-center gap-1 transition-all shadow-xs btn-tactile"
+                          >
+                            <Plus className="w-3 h-3" />
+                            <span>เพิ่มรายการหัก</span>
+                          </button>
+                        </div>
+
+                        {tempExtraDeductions.map((item) => (
+                          <div key={item.id} className="flex items-center gap-2">
+                            <input
+                              type="text"
+                              value={item.name}
+                              onChange={(e) => handleUpdateExtraDeduction(item.id, 'name', e.target.value)}
+                              placeholder={`ชื่อรายการหัก`}
+                              className={`flex-1 px-3 py-1.5 rounded-xl border focus:outline-none text-xs ${
+                                isDark ? 'bg-zinc-950 border-zinc-700 text-white' : 'bg-white border-slate-200 text-slate-900'
+                              }`}
+                            />
+                            <div className="w-28 relative">
+                              <input
+                                type="number"
+                                min="0"
+                                value={item.amount === 0 ? '' : item.amount}
+                                placeholder="0"
+                                onFocus={(e) => e.target.select()}
+                                onChange={(e) => handleUpdateExtraDeduction(item.id, 'amount', e.target.value)}
+                                className={`w-full px-3 py-1.5 rounded-xl border font-mono font-bold text-xs text-right focus:outline-none ${
+                                  isDark ? 'bg-zinc-950 border-zinc-700 text-rose-400' : 'bg-white border-slate-200 text-rose-600'
+                                }`}
+                              />
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveExtraDeduction(item.id)}
+                              className="p-1.5 rounded-xl text-rose-400 hover:bg-rose-500/20 transition-colors btn-tactile"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Checkbox to save as default profile in Auto Mode */}
+                    <label className="flex items-center gap-2 cursor-pointer pt-1 text-[11px] select-none">
+                      <input
+                        type="checkbox"
+                        checked={tempSaveAsDefault}
+                        onChange={(e) => setTempSaveAsDefault(e.target.checked)}
+                        className="rounded border-zinc-700 text-amber-500 focus:ring-amber-500 w-4 h-4"
+                      />
+                      <span className="text-zinc-300 dark:text-zinc-300 font-medium">
+                        บันทึกฐานเงินเดือนและรูปแบบนี้เป็นค่าเริ่มต้นในโปรไฟล์ช่าง {editingBarber.nickname} ด้วย
+                      </span>
+                    </label>
                   </div>
                 )}
 
-                {/* 3. Live Preview of Guarantee Calculation */}
-                <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-[11px] space-y-1.5">
-                  <div className="flex items-center justify-between font-bold text-emerald-600 dark:text-emerald-400">
-                    <span className="flex items-center gap-1">
-                      <Sparkles className="w-3.5 h-3.5" />
-                      <span>จำลองผลลัพธ์การคำนวณจริงเดือนนี้</span>
-                    </span>
-                    <span className="font-mono text-xs">
-                      คอมมิชชั่นสะสม: {settings.currencySymbol}{actualCommission.toLocaleString()}
-                    </span>
-                  </div>
-                  <p className="text-zinc-300 dark:text-zinc-300 text-[11px] leading-relaxed">
-                    {previewExplanation}
-                  </p>
-                </div>
-
-                {/* 4. Bonus & Allowances */}
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1">
-                    <label className="font-semibold block text-emerald-600 dark:text-emerald-400">
-                      เบี้ยขยัน / โบนัส ({settings.currencySymbol})
-                    </label>
-                    <input
-                      type="number"
-                      min="0"
-                      value={tempBonus}
-                      onChange={(e) => setTempBonus(e.target.value)}
-                      className={`w-full px-3 py-2 rounded-xl border font-mono font-bold focus:outline-none ${
-                        isDark ? 'bg-zinc-950 border-zinc-700 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'
-                      }`}
-                    />
-                  </div>
-
-                  <div className="space-y-1">
-                    <label className="font-semibold block text-emerald-600 dark:text-emerald-400">
-                      ค่าตำแหน่ง ({settings.currencySymbol})
-                    </label>
-                    <input
-                      type="number"
-                      min="0"
-                      value={tempPositionAllowance}
-                      onChange={(e) => setTempPositionAllowance(e.target.value)}
-                      placeholder="เช่น 1,000 หรือ 2,000"
-                      className={`w-full px-3 py-2 rounded-xl border font-mono font-bold focus:outline-none ${
-                        isDark ? 'bg-zinc-950 border-zinc-700 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'
-                      }`}
-                    />
-                  </div>
-                </div>
-
-                {/* 4.1 Custom Extra Allowance (กำหนดชื่อและจำนวนเงินได้เอง) */}
-                <div className="p-3 rounded-xl border space-y-2 bg-slate-50/50 dark:bg-zinc-900/50 border-slate-200 dark:border-zinc-800">
-                  <div className="font-semibold text-emerald-600 dark:text-emerald-400 flex items-center justify-between">
-                    <span>เงินพิเศษ / รายการรายได้เพิ่มเติม (กำหนดเอง)</span>
-                    <span className="text-[10px] text-zinc-400">เผื่อมีเงินพิเศษเฉพาะช่าง</span>
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                    <div className="space-y-1">
-                      <label className={`block text-[11px] ${mutedText}`}>
-                        ชื่อรายการเงินพิเศษ
-                      </label>
-                      <input
-                        type="text"
-                        value={tempCustomEarningName}
-                        onChange={(e) => setTempCustomEarningName(e.target.value)}
-                        placeholder="เช่น ค่าปิดร้าน, ค่าเดินทาง, OT, ค่าสอนงาน"
-                        className={`w-full px-3 py-2 rounded-xl border focus:outline-none ${
-                          isDark ? 'bg-zinc-950 border-zinc-700 text-white' : 'bg-white border-slate-200 text-slate-900'
-                        }`}
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label className={`block text-[11px] ${mutedText}`}>
-                        จำนวนเงิน ({settings.currencySymbol})
-                      </label>
-                      <input
-                        type="number"
-                        min="0"
-                        value={tempCustomEarningAmount}
-                        onChange={(e) => setTempCustomEarningAmount(e.target.value)}
-                        placeholder="0"
-                        className={`w-full px-3 py-2 rounded-xl border font-mono font-bold focus:outline-none ${
-                          isDark ? 'bg-zinc-950 border-zinc-700 text-white' : 'bg-white border-slate-200 text-slate-900'
-                        }`}
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="font-semibold block text-emerald-600 dark:text-emerald-400">
-                    ค่าครองชีพ / อื่นๆ ({settings.currencySymbol})
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    value={tempAllowance}
-                    onChange={(e) => setTempAllowance(e.target.value)}
-                    className={`w-full px-3 py-2 rounded-xl border font-mono font-bold focus:outline-none ${
-                      isDark ? 'bg-zinc-950 border-zinc-700 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'
-                    }`}
-                  />
-                </div>
-
-                {/* 5. Deductions */}
-                <div className="border-t border-zinc-800/40 pt-3 space-y-3">
-                  <div className="space-y-1">
-                    <label className="font-semibold block text-rose-600 dark:text-rose-400">
-                      หักเงินเบิกล่วงหน้า (ระบุเองเพื่อแทนที่ค่าตรวจพบอัตโนมัติ) ({settings.currencySymbol})
-                    </label>
-                    <input
-                      type="number"
-                      min="0"
-                      value={tempManualAdvance}
-                      onChange={(e) => setTempManualAdvance(e.target.value)}
-                      placeholder="0 = ใช้ยอดเบิกตามระบบบันทึกรายจ่าย"
-                      className={`w-full px-3 py-2 rounded-xl border font-mono font-bold focus:outline-none ${
-                        isDark ? 'bg-zinc-950 border-zinc-700 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'
-                      }`}
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-1">
-                      <label className="font-semibold block text-rose-600 dark:text-rose-400">
-                        ประกันสังคม ({settings.currencySymbol})
-                      </label>
-                      <input
-                        type="number"
-                        min="0"
-                        value={tempSocialSecurity}
-                        onChange={(e) => setTempSocialSecurity(e.target.value)}
-                        className={`w-full px-3 py-2 rounded-xl border font-mono font-bold focus:outline-none ${
-                          isDark ? 'bg-zinc-950 border-zinc-700 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'
-                        }`}
-                      />
-                    </div>
-
-                    <div className="space-y-1">
-                      <label className="font-semibold block text-rose-600 dark:text-rose-400">
-                        ค่าปรับ / หักอื่นๆ ({settings.currencySymbol})
-                      </label>
-                      <input
-                        type="number"
-                        min="0"
-                        value={tempOtherDeductions}
-                        onChange={(e) => setTempOtherDeductions(e.target.value)}
-                        className={`w-full px-3 py-2 rounded-xl border font-mono font-bold focus:outline-none ${
-                          isDark ? 'bg-zinc-950 border-zinc-700 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'
-                        }`}
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                <div className="space-y-1">
+                {/* Common Notes field */}
+                <div className="space-y-1 pt-1">
                   <label className={`font-semibold block ${mutedText}`}>
                     หมายเหตุเพิ่มเติมบนสลิป
                   </label>
@@ -1690,26 +2566,14 @@ export const TabPayslip: React.FC = () => {
                     type="text"
                     value={tempNotes}
                     onChange={(e) => setTempNotes(e.target.value)}
-                    placeholder="เช่น โบนัสยอดตัดผมเกินเป้าหมาย"
+                    placeholder="เช่น ปรับยอดเงินพิเศษประจำเดือน, โบนัสพิเศษ"
                     className={`w-full px-3 py-2 rounded-xl border focus:outline-none ${
                       isDark ? 'bg-zinc-950 border-zinc-700 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'
                     }`}
                   />
                 </div>
 
-                {/* Checkbox to save as default profile */}
-                <label className="flex items-center gap-2 cursor-pointer pt-1 text-[11px] select-none">
-                  <input
-                    type="checkbox"
-                    checked={tempSaveAsDefault}
-                    onChange={(e) => setTempSaveAsDefault(e.target.checked)}
-                    className="rounded border-zinc-700 text-amber-500 focus:ring-amber-500 w-4 h-4"
-                  />
-                  <span className="text-zinc-300 dark:text-zinc-300 font-medium">
-                    บันทึกฐานเงินเดือนและรูปแบบนี้เป็นค่าเริ่มต้นในโปรไฟล์ช่าง {editingBarber.nickname} ด้วย
-                  </span>
-                </label>
-
+                {/* Action Buttons */}
                 <div className="flex items-center justify-end gap-2 pt-3 border-t border-zinc-800/40">
                   <button
                     type="button"
@@ -1722,9 +2586,13 @@ export const TabPayslip: React.FC = () => {
                   </button>
                   <button
                     type="submit"
-                    className="px-5 py-2 rounded-xl font-bold bg-amber-500 hover:bg-amber-400 text-zinc-950 shadow-md btn-tactile"
+                    className={`px-5 py-2 rounded-xl font-bold transition-all shadow-md btn-tactile ${
+                      tempIsManualMode
+                        ? 'bg-violet-600 hover:bg-violet-500 text-white shadow-violet-600/30'
+                        : 'bg-amber-500 hover:bg-amber-400 text-zinc-950 shadow-amber-500/30'
+                    }`}
                   >
-                    บันทึกข้อมูล
+                    {tempIsManualMode ? 'บันทึกโหมด Manual' : 'บันทึกข้อมูล'}
                   </button>
                 </div>
               </form>
