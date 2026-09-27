@@ -19,6 +19,7 @@ import {
   Trash2,
   Edit2,
   Check,
+  ArrowDownRight,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { DenominationCount } from '../types';
@@ -431,7 +432,47 @@ ${denomLines ? `📑 รายการนับแยกใบ/เหรีย�
         </div>
       </div>
 
-      {/* 2. SUMMARY DASHBOARD: 3 CLEAR FIGURES */}
+      {/* 2. CASH RECEIVED TODAY / SELECTED DATE (เงินสดที่ได้รับในวันนั้นๆ) */}
+      <div className={`p-4 rounded-2xl border transition-all ${
+        isDark
+          ? 'bg-gradient-to-r from-emerald-950/30 via-zinc-900 to-zinc-900 border-emerald-500/30'
+          : 'bg-gradient-to-r from-emerald-50/80 via-white to-white border-emerald-200'
+      } shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3`}>
+        <div className="flex items-center gap-3">
+          <div className="w-11 h-11 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-500 flex items-center justify-center font-bold shrink-0">
+            <ArrowDownRight className="w-6 h-6" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400">
+                {selectedDate === todayStr ? 'เงินสดที่ได้รับวันนี้ (บิลขาย)' : `เงินสดที่ได้รับวันที่ ${formatThaiDateFull(selectedDate)}`}
+              </span>
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                {cashBills.length} บิล
+              </span>
+            </div>
+            <div className="text-2xl sm:text-3xl font-mono font-black text-emerald-600 dark:text-emerald-400 mt-0.5">
+              +฿{cashSalesTotal.toLocaleString()}
+            </div>
+          </div>
+        </div>
+
+        <div className="sm:text-right border-t sm:border-t-0 pt-2 sm:pt-0 border-emerald-500/20 text-xs">
+          <div className="text-zinc-400 text-[11px]">
+            เงินทอนเริ่มต้น: <strong className="text-zinc-300 font-mono">฿{openingFloat.toLocaleString()}</strong>
+            {cashExpensesTotal > 0 && (
+              <span className="text-rose-400 ml-1.5">
+                | จ่ายออก: -฿{cashExpensesTotal.toLocaleString()}
+              </span>
+            )}
+          </div>
+          <div className="text-xs text-amber-500 font-semibold mt-0.5">
+            รวมเงินสดที่ต้องมีในเก๊ะ: <strong className="text-base font-mono font-bold">฿{expectedTotal.toLocaleString()}</strong>
+          </div>
+        </div>
+      </div>
+
+      {/* 3. SUMMARY DASHBOARD: 3 CLEAR FIGURES */}
       <div className={`p-4 rounded-2xl border ${cardBg} shadow-xs space-y-3`}>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 divide-y sm:divide-y-0 sm:divide-x divide-zinc-200 dark:divide-zinc-800">
           {/* Col 1: System Expected */}
