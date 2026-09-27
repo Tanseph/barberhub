@@ -41,7 +41,7 @@ export const ModalAccountingReport: React.FC<ModalAccountingReportProps> = ({
   periodBills,
   barberSummaries,
 }) => {
-  const { settings, theme, expenses, showToast } = useApp();
+  const { settings, theme, expenses, showToast, cashDrawerRecords, getOpeningFloatForDate } = useApp();
   const isDark = theme.isDark ?? true;
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
   const reportRef = useRef<HTMLDivElement>(null);
@@ -106,6 +106,11 @@ export const ModalAccountingReport: React.FC<ModalAccountingReportProps> = ({
   const cashExpenses = periodExpenses.filter((e) => e.paymentMethod === 'cash').reduce((s, e) => s + e.amount, 0);
   const transferExpenses = periodExpenses.filter((e) => e.paymentMethod === 'transfer').reduce((s, e) => s + e.amount, 0);
   const netCashInDrawer = totalCash - cashExpenses;
+
+  // Cash Drawer & Float reconciliation for accurate accounting
+  const dailyOpeningFloat = viewMode === 'daily' ? getOpeningFloatForDate(selectedDate) : 0;
+  const expectedTotalCashInDrawer = Math.max(0, dailyOpeningFloat + totalCash - cashExpenses);
+  const dailyDrawerRecord = viewMode === 'daily' ? cashDrawerRecords.find((r) => r.dateStr === selectedDate) : null;
 
   const expensesByCategory = periodExpenses.reduce((acc, exp) => {
     const cat = exp.category || 'เบ็ดเตล็ด';
@@ -192,7 +197,12 @@ export const ModalAccountingReport: React.FC<ModalAccountingReportProps> = ({
         ['เงินสดรับเข้าลิ้นชัก', `${cashBillCount} บิล`, totalCash, `${cashInflowPct}%`],
         ['รวมยอดรับชำระทั้งหมด', `${totalBills} บิล`, totalCustomerInflow, '100%'],
         ['หัก รายจ่ายร้านที่จ่ายด้วยเงินสด', `${periodExpenses.filter((e) => e.paymentMethod === 'cash').length} รายการ`, -cashExpenses, ''],
-        ['ยอดเงินสดคงเหลือสุทธิในลิ้นชัก', '-', netCashInDrawer, ''],
+        ...(dailyOpeningFloat > 0 ? [['บวก เงินทอนเปิดเก๊ะ', '-', dailyOpeningFloat, '']] : []),
+        ['ยอดเงินสดในเก๊ะที่ต้องมีตามบัญชี', '-', expectedTotalCashInDrawer, ''],
+        ...(dailyDrawerRecord ? [
+          ['ยอดเงินสดที่ตรวจนับได้จริงในเก๊ะ', '-', dailyDrawerRecord.actualCounted, ''],
+          ['ผลต่างกระทบยอดทางบัญชี (เงินสดเกิน/ขาด)', '-', dailyDrawerRecord.difference, dailyDrawerRecord.status === 'balanced' ? 'ตรงเป๊ะ' : dailyDrawerRecord.status === 'surplus' ? 'เงินสดเกิน' : 'เงินสดขาด'],
+        ] : []),
         [],
         ['3. สรุปส่วนแบ่งช่างรายบุคคล (Barber Commission Ledger)'],
         ['ชื่อช่าง', 'จำนวนหัว', 'ตัดผม', 'เคมี', 'สินค้า', 'ทิป (100%)', 'รวมเงินที่จ่ายช่าง'],
@@ -675,13 +685,46 @@ export const ModalAccountingReport: React.FC<ModalAccountingReportProps> = ({
                       <span>• หัก รายจ่ายร้านที่จ่ายด้วยเงินสด:</span>
                       <span className="font-mono">-{settings.currencySymbol}{cashExpenses.toLocaleString()}</span>
                     </div>
+                    {dailyOpeningFloat > 0 && (
+                      <div className="flex justify-between py-1 text-amber-600 dark:text-amber-400 font-medium px-2">
+                        <span>• บวก เงินทอนเปิดเก๊ะ:</span>
+                        <span className="font-mono">+{settings.currencySymbol}{dailyOpeningFloat.toLocaleString()}</span>
+                      </div>
+                    )}
                     <div className="flex justify-between py-2 font-black text-emerald-700 dark:text-emerald-400 bg-emerald-500/10 px-2.5 rounded-lg border border-emerald-500/20 text-sm">
-                      <span>ยอดเงินสดคงเหลือสุทธิในลิ้นชัก:</span>
-                      <span className="font-mono">{settings.currencySymbol}{netCashInDrawer.toLocaleString()}</span>
+                      <span>ยอดเงินสดในเก๊ะที่ต้องมีตามบัญชี:</span>
+                      <span className="font-mono">{settings.currencySymbol}{expectedTotalCashInDrawer.toLocaleString()}</span>
                     </div>
-                    <div className="text-[10px] text-slate-500 dark:text-zinc-400 pt-1">
-                      (เงินสดรับ {settings.currencySymbol}{totalCash.toLocaleString()} หักรายจ่ายเงินสด {settings.currencySymbol}{cashExpenses.toLocaleString()})
-                    </div>
+
+                    {/* Physical Count & Reconciliation */}
+                    {dailyDrawerRecord ? (
+                      <div className="p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-xs space-y-1">
+                        <div className="flex justify-between font-bold text-amber-700 dark:text-amber-300">
+                          <span>🪙 ยอดเงินสดที่ตรวจนับได้จริงในเก๊ะ:</span>
+                          <span className="font-mono">{settings.currencySymbol}{dailyDrawerRecord.actualCounted.toLocaleString()}</span>
+                        </div>
+                        <div className="flex justify-between text-[11px] font-semibold">
+                          <span>ผลต่างกระทบยอดทางบัญชี:</span>
+                          <span className={`font-mono ${
+                            dailyDrawerRecord.status === 'balanced'
+                              ? 'text-emerald-600 dark:text-emerald-400 font-bold'
+                              : dailyDrawerRecord.status === 'surplus'
+                              ? 'text-sky-600 dark:text-sky-400 font-bold'
+                              : 'text-rose-600 dark:text-rose-400 font-bold'
+                          }`}>
+                            {dailyDrawerRecord.status === 'balanced'
+                              ? '✅ ตรงเป๊ะ (ไม่มีผลต่างขาดเกิน)'
+                              : dailyDrawerRecord.status === 'surplus'
+                              ? `📈 เงินสดเกินบัญชี +${settings.currencySymbol}${dailyDrawerRecord.difference.toLocaleString()}`
+                              : `📉 เงินสดขาดบัญชี -${settings.currencySymbol}${Math.abs(dailyDrawerRecord.difference).toLocaleString()}`}
+                          </span>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="text-[10px] text-slate-500 dark:text-zinc-400 pt-0.5 px-1">
+                        (เงินสดรับ {settings.currencySymbol}{totalCash.toLocaleString()} หักรายจ่ายเงินสด {settings.currencySymbol}{cashExpenses.toLocaleString()}{dailyOpeningFloat > 0 ? ` + เงินทอน ${settings.currencySymbol}${dailyOpeningFloat.toLocaleString()}` : ''})
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>

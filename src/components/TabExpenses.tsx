@@ -17,12 +17,27 @@ import {
   Tag,
   Check,
   ChevronDown,
+  Coins,
+  ArrowRight,
 } from 'lucide-react';
 import { sounds } from '../utils/sound';
 
 export const TabExpenses: React.FC = () => {
-  const { expenses, addExpense, updateExpense, deleteExpense, barbers, settings, theme, openConfirm, showToast } =
-    useApp();
+  const {
+    expenses,
+    bills,
+    addExpense,
+    updateExpense,
+    deleteExpense,
+    barbers,
+    settings,
+    theme,
+    openConfirm,
+    showToast,
+    setActiveTab,
+    getOpeningFloatForDate,
+    cashDrawerRecords,
+  } = useApp();
 
   const isDark = theme.isDark ?? true;
 
@@ -45,11 +60,12 @@ export const TabExpenses: React.FC = () => {
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
   const [editingExpense, setEditingExpense] = useState<ShopExpense | null>(null);
 
-  // Form states (5 core fields only: หมวดหมู่, วันที่, จำนวนเงิน, ผู้เบิกเงิน, หมายเหตุเพิ่มเติม)
+  // Form states
   const [formCategory, setFormCategory] = useState<ExpenseCategory>('utilities');
   const [formDate, setFormDate] = useState<string>(defaultDateStr);
   const [formAmount, setFormAmount] = useState<string>('');
   const [formPayee, setFormPayee] = useState<string>('เจ้าของร้าน');
+  const [formPaymentMethod, setFormPaymentMethod] = useState<'cash' | 'transfer'>('cash');
   const [formNotes, setFormNotes] = useState<string>('');
 
   // Filtered Expenses
@@ -117,6 +133,35 @@ export const TabExpenses: React.FC = () => {
     };
   }, [filteredExpenses]);
 
+  // Cash Drawer & Reconciliation Context
+  const todayCashSales = useMemo(() => {
+    return bills
+      .filter((b) => b.dateStr === defaultDateStr)
+      .reduce((sum, b) => {
+        if (b.paymentMethod === 'cash') return sum + (b.cashAmount > 0 ? b.cashAmount : b.grossTotal);
+        if (b.paymentMethod === 'split') return sum + (b.cashAmount || 0);
+        return sum;
+      }, 0);
+  }, [bills, defaultDateStr]);
+
+  const todayCashExpenses = useMemo(() => {
+    return expenses
+      .filter((e) => e.dateStr === defaultDateStr && e.paymentMethod === 'cash')
+      .reduce((sum, e) => sum + e.amount, 0);
+  }, [expenses, defaultDateStr]);
+
+  const todayOpeningFloat = getOpeningFloatForDate(defaultDateStr);
+  const todayDrawerExpected = Math.max(0, todayOpeningFloat + todayCashSales - todayCashExpenses);
+
+  const totalCashExpenses = useMemo(
+    () => filteredExpenses.filter((e) => e.paymentMethod === 'cash').reduce((sum, e) => sum + e.amount, 0),
+    [filteredExpenses]
+  );
+  const totalTransferExpenses = useMemo(
+    () => filteredExpenses.filter((e) => e.paymentMethod === 'transfer').reduce((sum, e) => sum + e.amount, 0),
+    [filteredExpenses]
+  );
+
   // Open modal for new expense
   const handleOpenAdd = () => {
     sounds.playClick();
@@ -125,6 +170,7 @@ export const TabExpenses: React.FC = () => {
     setFormDate(defaultDateStr);
     setFormAmount('');
     setFormPayee('เจ้าของร้าน');
+    setFormPaymentMethod('cash');
     setFormNotes('');
     setIsModalOpen(true);
   };
@@ -137,11 +183,12 @@ export const TabExpenses: React.FC = () => {
     setFormDate(expense.dateStr);
     setFormAmount(expense.amount.toString());
     setFormPayee(expense.payee || expense.recordedBy || 'เจ้าของร้าน');
+    setFormPaymentMethod(expense.paymentMethod || 'cash');
     setFormNotes(expense.notes || '');
     setIsModalOpen(true);
   };
 
-  // Save form (5 fields only)
+  // Save form
   const handleSaveForm = (e: React.FormEvent) => {
     e.preventDefault();
     const parsedAmount = parseFloat(formAmount);
@@ -160,7 +207,7 @@ export const TabExpenses: React.FC = () => {
       category: formCategory,
       title: catTitle,
       amount: parsedAmount,
-      paymentMethod: (editingExpense?.paymentMethod || 'cash') as 'cash' | 'transfer',
+      paymentMethod: formPaymentMethod,
       dateStr: formDate,
       timeStr: editingExpense?.timeStr || currentTimeStr,
       payee: formPayee.trim() || 'เจ้าของร้าน',
@@ -174,7 +221,12 @@ export const TabExpenses: React.FC = () => {
       showToast('บันทึกการแก้ไขสำเร็จ 📑', 'อัปเดตข้อมูลรายจ่ายเรียบร้อย', 'success', '✓');
     } else {
       addExpense(payload);
-      showToast('บันทึกรายจ่ายสำเร็จ 💸', `บันทึก ${catTitle} ฿${parsedAmount.toLocaleString()} เรียบร้อย`, 'success', '✓');
+      showToast(
+        'บันทึกรายจ่ายสำเร็จ 💸',
+        `บันทึก ${catTitle} ฿${parsedAmount.toLocaleString()} (${formPaymentMethod === 'cash' ? 'หักเงินสดในเก๊ะ' : 'จ่ายเงินโอน'}) เรียบร้อย`,
+        'success',
+        '✓'
+      );
     }
 
     setIsModalOpen(false);
@@ -390,40 +442,98 @@ export const TabExpenses: React.FC = () => {
           </div>
         </div>
 
-        {/* 3 High-Impact Metrics */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        {/* High-Impact Accounting & Cash Metrics */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           {/* Total Expense */}
           <div className={`p-3.5 rounded-xl border ${isDark ? 'bg-zinc-950/60 border-zinc-800' : 'bg-rose-50/40 border-rose-100'}`}>
-            <span className={`text-xs font-semibold ${textMuted}`}>ยอดรายจ่ายรวม</span>
+            <div className="flex items-center justify-between">
+              <span className={`text-xs font-semibold ${textMuted}`}>ยอดรายจ่ายรวม</span>
+              <span className="text-[10px] font-mono text-zinc-400">{filteredExpenses.length} รายการ</span>
+            </div>
             <div className="text-xl font-bold font-mono text-rose-600 dark:text-rose-400 mt-1">
               {settings.currencySymbol}
               {totalAmount.toLocaleString()}
             </div>
-          </div>
-
-          {/* Record Count */}
-          <div className={`p-3.5 rounded-xl border ${isDark ? 'bg-zinc-950/60 border-zinc-800' : 'bg-slate-50 border-slate-200'}`}>
-            <span className={`text-xs font-semibold ${textMuted}`}>จำนวนรายการ</span>
-            <div className={`text-xl font-bold font-mono ${textHeading} mt-1`}>
-              {filteredExpenses.length} <span className="text-xs font-normal">รายการ</span>
+            <div className="text-[10px] text-zinc-400 mt-0.5 truncate">
+              {topCategory ? `สูงสุด: ${topCategory.name}` : 'ทุกหมวดหมู่'}
             </div>
           </div>
 
-          {/* Top Category */}
-          <div className={`p-3.5 rounded-xl border ${isDark ? 'bg-zinc-950/60 border-zinc-800' : 'bg-slate-50 border-slate-200'}`}>
-            <span className={`text-xs font-semibold ${textMuted}`}>หมวดหมู่สูงสุด</span>
-            <div className="text-sm font-bold truncate mt-1 flex items-center gap-1.5">
-              {topCategory ? (
-                <>
-                  <span>{topCategory.icon}</span>
-                  <span className={`truncate ${textHeading}`}>{topCategory.name}</span>
-                  <span className="text-xs font-mono text-rose-600 dark:text-rose-400">
-                    ({settings.currencySymbol}{topCategory.amount.toLocaleString()})
-                  </span>
-                </>
-              ) : (
-                <span className={`text-xs font-normal ${textMuted}`}>-</span>
-              )}
+          {/* Cash Expenses (Deducted from Drawer) */}
+          <div className={`p-3.5 rounded-xl border ${isDark ? 'bg-amber-950/20 border-amber-500/30' : 'bg-amber-50/60 border-amber-200'}`}>
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                <Coins className="w-3.5 h-3.5" />
+                <span>จ่ายเงินสดในเก๊ะ</span>
+              </span>
+              <span className="text-[10px] font-mono text-amber-500 font-bold">หักเก๊ะ</span>
+            </div>
+            <div className="text-xl font-bold font-mono text-amber-500 mt-1">
+              {settings.currencySymbol}
+              {totalCashExpenses.toLocaleString()}
+            </div>
+            <div className="text-[10px] text-zinc-400 mt-0.5">
+              นำไปหักยอดเงินสดในเก๊ะอัตโนมัติ
+            </div>
+          </div>
+
+          {/* Transfer Expenses */}
+          <div className={`p-3.5 rounded-xl border ${isDark ? 'bg-sky-950/20 border-sky-500/30' : 'bg-sky-50/60 border-sky-200'}`}>
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-sky-600 dark:text-sky-400">
+                จ่ายด้วยเงินโอน
+              </span>
+              <span className="text-[10px] font-mono text-sky-400">บัญชีร้าน</span>
+            </div>
+            <div className="text-xl font-bold font-mono text-sky-600 dark:text-sky-400 mt-1">
+              {settings.currencySymbol}
+              {totalTransferExpenses.toLocaleString()}
+            </div>
+            <div className="text-[10px] text-zinc-400 mt-0.5">
+              ไม่กระทบเงินสดในเก๊ะ
+            </div>
+          </div>
+
+          {/* Cash Drawer Link & Live Status */}
+          <div className={`p-3.5 rounded-xl border flex flex-col justify-between ${
+            isDark ? 'bg-zinc-950/60 border-emerald-500/30' : 'bg-emerald-50/40 border-emerald-200'
+          }`}>
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                <Wallet className="w-3.5 h-3.5" />
+                <span>เงินสดในเก๊ะวันนี้</span>
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    sounds.playClick();
+                    setActiveTab('dashboard');
+                  }}
+                  className="text-[10px] font-bold text-sky-500 hover:underline flex items-center gap-0.5"
+                >
+                  <span>แดชบอร์ด</span>
+                  <ArrowRight className="w-2.5 h-2.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    sounds.playClick();
+                    setActiveTab('cash-drawer');
+                  }}
+                  className="text-[10px] font-bold text-amber-500 hover:underline flex items-center gap-0.5"
+                >
+                  <span>ตรวจนับ</span>
+                  <ArrowRight className="w-2.5 h-2.5" />
+                </button>
+              </div>
+            </div>
+            <div className="text-xl font-bold font-mono text-emerald-600 dark:text-emerald-400 mt-1">
+              {settings.currencySymbol}
+              {todayDrawerExpected.toLocaleString()}
+            </div>
+            <div className="text-[10px] text-zinc-400 mt-0.5">
+              ทอน ฿{todayOpeningFloat.toLocaleString()} + ขายสด ฿{todayCashSales.toLocaleString()} - จ่ายสด ฿{todayCashExpenses.toLocaleString()}
             </div>
           </div>
         </div>
@@ -521,10 +631,21 @@ export const TabExpenses: React.FC = () => {
 
                       {/* Category */}
                       <td className="py-3 px-4 whitespace-nowrap">
-                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold border dark:border-zinc-700 border-slate-200 dark:bg-zinc-800 bg-slate-100">
-                          <span>{catMeta?.icon || '🏷️'}</span>
-                          <span className={textHeading}>{catMeta?.name.split('/')[0] || exp.title}</span>
-                        </span>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold border dark:border-zinc-700 border-slate-200 dark:bg-zinc-800 bg-slate-100">
+                            <span>{catMeta?.icon || '🏷️'}</span>
+                            <span className={textHeading}>{catMeta?.name.split('/')[0] || exp.title}</span>
+                          </span>
+                          <span
+                            className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${
+                              exp.paymentMethod === 'cash'
+                                ? 'bg-amber-500/10 text-amber-500 border-amber-500/30'
+                                : 'bg-sky-500/10 text-sky-500 border-sky-500/30'
+                            }`}
+                          >
+                            {exp.paymentMethod === 'cash' ? '💵 สดในเก๊ะ' : '📱 เงินโอน'}
+                          </span>
+                        </div>
                       </td>
 
                       {/* Payee */}
@@ -721,6 +842,53 @@ export const TabExpenses: React.FC = () => {
                     </button>
                   ))}
                 </div>
+              </div>
+
+              {/* Field 5: ช่องทางชำระเงิน */}
+              <div>
+                <label className={`block text-xs font-bold ${textHeading} mb-1.5`}>
+                  5. ช่องทางชำระเงิน <span className="text-rose-500">*</span>
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      sounds.playClick();
+                      setFormPaymentMethod('cash');
+                    }}
+                    className={`py-2 px-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${
+                      formPaymentMethod === 'cash'
+                        ? 'bg-amber-500/15 border-amber-500 text-amber-500 dark:text-amber-400 shadow-xs'
+                        : isDark
+                        ? 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:text-zinc-200'
+                        : 'bg-slate-50 border-slate-200 text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    <Coins className="w-3.5 h-3.5" />
+                    <span>💵 เงินสดในเก๊ะ (หักเก๊ะ)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      sounds.playClick();
+                      setFormPaymentMethod('transfer');
+                    }}
+                    className={`py-2 px-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${
+                      formPaymentMethod === 'transfer'
+                        ? 'bg-sky-500/15 border-sky-500 text-sky-500 dark:text-sky-400 shadow-xs'
+                        : isDark
+                        ? 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:text-zinc-200'
+                        : 'bg-slate-50 border-slate-200 text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    <span>📱 เงินโอน / บัญชีร้าน</span>
+                  </button>
+                </div>
+                <p className="text-[10px] text-zinc-400 mt-1">
+                  {formPaymentMethod === 'cash'
+                    ? `💡 จ่ายด้วยเงินสด: ยอดนี้จะถูกนำไปหักออกจากเงินสดในเก๊ะทันที (ในเก๊ะปัจจุบันมี ฿${todayDrawerExpected.toLocaleString()}) เชื่อมไปยังหน้านับเงินสดและแดชบอร์ดเพื่อกระทบยอดบัญชีได้อย่างถูกต้อง`
+                    : '💡 ยอดเงินนี้จ่ายผ่านบัญชีธนาคาร จะไม่กระทบเงินสดในเก๊ะ'}
+                </p>
               </div>
 
               {/* Field 5: หมายเหตุเพิ่มเติม */}

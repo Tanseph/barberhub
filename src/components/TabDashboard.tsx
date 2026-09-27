@@ -37,6 +37,7 @@ import {
   Sparkles,
   ShoppingBag,
   ArrowUpDown,
+  Coins,
 } from 'lucide-react';
 import { sounds } from '../utils/sound';
 import { ModalAccountingReport } from './ModalAccountingReport';
@@ -116,6 +117,9 @@ export const TabDashboard: React.FC = () => {
     showToast,
     unmergeSaleBills,
     updateMergedGroupPayment,
+    cashDrawerRecords,
+    getOpeningFloatForDate,
+    setActiveTab,
   } = useApp();
 
   const isDark = theme.isDark ?? true;
@@ -267,6 +271,29 @@ export const TabDashboard: React.FC = () => {
   // Transfer vs Cash percentages (คำนวณจากยอดเงินที่รับเข้ามาจริง)
   const transferPercent = totalCustomerPayments > 0 ? Math.round((totalTransfer / totalCustomerPayments) * 100) : 0;
   const cashPercent = totalCustomerPayments > 0 ? 100 - transferPercent : 0;
+
+  // Cash Drawer & Accounting Reconciliation
+  const periodCashExpenses = useMemo(() => {
+    return allPeriodExpenses.filter((e) => e.paymentMethod === 'cash').reduce((s, e) => s + e.amount, 0);
+  }, [allPeriodExpenses]);
+
+  const activeOpeningFloat = useMemo(() => {
+    if (viewMode === 'daily') {
+      return getOpeningFloatForDate(selectedDate);
+    }
+    return 0;
+  }, [viewMode, selectedDate, getOpeningFloatForDate]);
+
+  const expectedDrawerCash = useMemo(() => {
+    return Math.max(0, activeOpeningFloat + totalCash - periodCashExpenses);
+  }, [activeOpeningFloat, totalCash, periodCashExpenses]);
+
+  const activeDrawerRecord = useMemo(() => {
+    if (viewMode === 'daily') {
+      return cashDrawerRecords.find((r) => r.dateStr === selectedDate);
+    }
+    return null;
+  }, [viewMode, selectedDate, cashDrawerRecords]);
 
   // Filtered bills for the daily ledger table (with search, filters, and sequential order applied)
   const filteredDailyBills = useMemo(() => {
@@ -1155,22 +1182,58 @@ export const TabDashboard: React.FC = () => {
             </div>
           </div>
 
-          {/* Item 6: เงินสดในลิ้นชัก */}
-          <div className={`p-3 rounded-xl border ${isDark ? 'bg-emerald-950/20 border-emerald-500/30' : 'bg-emerald-50/70 border-emerald-200'}`}>
-            <div className="flex items-center justify-between text-xs mb-1">
-              <span className="font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
-                <Banknote className="w-3 h-3" />
-                <span>เงินสดในลิ้นชัก</span>
-              </span>
-              <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-500 font-bold">
-                {cashPercent}%
-              </span>
+          {/* Item 6: เงินสดในเก๊ะ (Reconciliation) */}
+          <div className={`p-3 rounded-xl border flex flex-col justify-between ${
+            isDark ? 'bg-emerald-950/20 border-emerald-500/30' : 'bg-emerald-50/70 border-emerald-200'
+          }`}>
+            <div>
+              <div className="flex items-center justify-between text-xs mb-1">
+                <span className="font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                  <Coins className="w-3.5 h-3.5" />
+                  <span>เงินสดในเก๊ะ (สุทธิ)</span>
+                </span>
+                <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-500 font-bold">
+                  {cashPercent}%
+                </span>
+              </div>
+              <div className="text-base sm:text-lg font-black font-mono text-emerald-600 dark:text-emerald-400">
+                {settings.currencySymbol}{expectedDrawerCash.toLocaleString()}
+              </div>
+              <div className="text-[10px] text-zinc-400 font-medium mt-0.5 truncate">
+                ขายสด ฿{totalCash.toLocaleString()}{periodCashExpenses > 0 ? ` - จ่ายสด ฿${periodCashExpenses.toLocaleString()}` : ''}{activeOpeningFloat > 0 ? ` + ทอน ฿${activeOpeningFloat.toLocaleString()}` : ''}
+              </div>
             </div>
-            <div className="text-base sm:text-lg font-black font-mono text-emerald-600 dark:text-emerald-400">
-              {settings.currencySymbol}{totalCash.toLocaleString()}
-            </div>
-            <div className="text-[10px] text-emerald-600/80 dark:text-emerald-400/80 font-medium mt-0.5">
-              💵 {periodCashBills} บิลที่ใช้สด
+
+            {/* Cash Drawer Status badge or Quick Link */}
+            <div className="pt-1.5 mt-1.5 border-t border-dashed border-emerald-500/20 flex items-center justify-between text-[10px]">
+              {activeDrawerRecord ? (
+                <span className={`font-bold flex items-center gap-1 ${
+                  activeDrawerRecord.status === 'balanced'
+                    ? 'text-emerald-500'
+                    : activeDrawerRecord.status === 'surplus'
+                    ? 'text-sky-400'
+                    : 'text-rose-400'
+                }`}>
+                  <CheckCircle2 className="w-3 h-3" />
+                  <span>{activeDrawerRecord.status === 'balanced' ? 'ปิดเก๊ะตรงเป๊ะ' : activeDrawerRecord.status === 'surplus' ? `ปิดเก๊ะเกิน ฿${activeDrawerRecord.difference}` : `ปิดเก๊ะขาด -฿${Math.abs(activeDrawerRecord.difference)}`}</span>
+                </span>
+              ) : (
+                <span className="text-zinc-400">
+                  {viewMode === 'daily' ? `${periodCashBills} บิลเงินสด` : `${periodCashBills} บิลที่ใช้สด`}
+                </span>
+              )}
+
+              <button
+                type="button"
+                onClick={() => {
+                  sounds.playClick();
+                  setActiveTab('cash-drawer');
+                }}
+                className="text-amber-500 hover:text-amber-400 font-bold underline ml-auto flex items-center gap-0.5"
+              >
+                <span>นับเก๊ะ</span>
+                <span>→</span>
+              </button>
             </div>
           </div>
         </div>
@@ -2069,17 +2132,40 @@ export const TabDashboard: React.FC = () => {
               </div>
             </div>
 
-            {/* Box 3: สรุปสุทธิ */}
+            {/* Box 3: สรุปสุทธิ & กระทบยอดเงินสด */}
             <div className={`p-4 rounded-xl border ${isDark ? 'bg-zinc-950/70 border-zinc-800' : 'bg-slate-50 border-slate-200'}`}>
-              <h4 className="text-xs font-bold text-purple-600 mb-2 flex items-center gap-1.5">
-                <CheckCircle2 className="w-3.5 h-3.5" />
-                <span>3. สรุปเงินสด/โอน & กำไรสุทธิ</span>
-              </h4>
+              <div className="flex items-center justify-between mb-2">
+                <h4 className="text-xs font-bold text-purple-600 flex items-center gap-1.5">
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  <span>3. สรุปเงินสด/โอน & กำไรสุทธิ</span>
+                </h4>
+                <button
+                  type="button"
+                  onClick={() => {
+                    sounds.playClick();
+                    setActiveTab('cash-drawer');
+                  }}
+                  className="text-[10px] text-amber-500 font-bold hover:underline"
+                >
+                  ตรวจนับเก๊ะ →
+                </button>
+              </div>
               <div className="space-y-1.5 text-xs">
                 <div className="flex justify-between">
-                  <span className={mutedText}>เงินสดในเก๊ะ (💵):</span>
-                  <span className="font-mono font-semibold text-emerald-600">{settings.currencySymbol}{totalCash.toLocaleString()}</span>
+                  <span className={mutedText}>เงินสดในเก๊ะสุทธิ (💵):</span>
+                  <span className="font-mono font-semibold text-emerald-600">{settings.currencySymbol}{expectedDrawerCash.toLocaleString()}</span>
                 </div>
+                {periodCashExpenses > 0 && (
+                  <div className="flex justify-between text-[11px] text-zinc-400">
+                    <span>(รับสด {totalCash.toLocaleString()} - จ่ายสด {periodCashExpenses.toLocaleString()}{activeOpeningFloat > 0 ? ` + ทอน ${activeOpeningFloat.toLocaleString()}` : ''})</span>
+                  </div>
+                )}
+                {activeDrawerRecord && (
+                  <div className="flex justify-between text-[11px] font-semibold text-amber-500">
+                    <span>ผลการตรวจนับเก๊ะ:</span>
+                    <span>{activeDrawerRecord.status === 'balanced' ? 'ตรงเป๊ะ 100%' : activeDrawerRecord.status === 'surplus' ? `เกิน +฿${activeDrawerRecord.difference}` : `ขาด -฿${Math.abs(activeDrawerRecord.difference)}`}</span>
+                  </div>
+                )}
                 <div className="flex justify-between">
                   <span className={mutedText}>เงินโอนเข้าบัญชี (📱):</span>
                   <span className="font-mono font-semibold text-sky-600">{settings.currencySymbol}{totalTransfer.toLocaleString()}</span>
