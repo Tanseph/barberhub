@@ -20,6 +20,7 @@ import {
   QueueBooking,
   ShopSettings,
   UserAccount,
+  CashDrawerRecord,
 } from '../types';
 
 // Initialize Firebase App
@@ -252,7 +253,7 @@ export async function saveShopSettingsToCloud(shopId: string, email: string, set
 
 export async function saveDocumentToCloud<T extends { id: string }>(
   shopId: string,
-  subCollection: 'barbers' | 'products' | 'bills' | 'expenses' | 'queues',
+  subCollection: 'barbers' | 'products' | 'bills' | 'expenses' | 'queues' | 'cashCounts',
   item: T
 ) {
   const docPath = `shops/${shopId}/${subCollection}/${item.id}`;
@@ -266,7 +267,7 @@ export async function saveDocumentToCloud<T extends { id: string }>(
 
 export async function deleteDocumentFromCloud(
   shopId: string,
-  subCollection: 'barbers' | 'products' | 'bills' | 'expenses' | 'queues',
+  subCollection: 'barbers' | 'products' | 'bills' | 'expenses' | 'queues' | 'cashCounts',
   itemId: string
 ) {
   const docPath = `shops/${shopId}/${subCollection}/${itemId}`;
@@ -299,6 +300,7 @@ export function subscribeToShopData(
     onBills?: (bills: SaleBill[]) => void;
     onExpenses?: (expenses: ShopExpense[]) => void;
     onQueues?: (queues: QueueBooking[]) => void;
+    onCashCounts?: (records: CashDrawerRecord[]) => void;
   }
 ): Unsubscribe[] {
   const unsubs: Unsubscribe[] = [];
@@ -411,6 +413,24 @@ export function subscribeToShopData(
     unsubs.push(unsubQueues);
   } catch (e) {
     console.error('Error listening to queues', e);
+  }
+
+  // 7. Cash Counts (Drawer snapshots)
+  try {
+    const unsubCashCounts = onSnapshot(
+      collection(db, 'shops', shopId, 'cashCounts'),
+      (snap) => {
+        if (callbacks.onCashCounts) {
+          const items: CashDrawerRecord[] = [];
+          snap.forEach((d) => items.push(d.data() as CashDrawerRecord));
+          callbacks.onCashCounts(items);
+        }
+      },
+      (err) => handleFirestoreError(err, OperationType.LIST, `shops/${shopId}/cashCounts`)
+    );
+    unsubs.push(unsubCashCounts);
+  } catch (e) {
+    console.error('Error listening to cashCounts', e);
   }
 
   return unsubs;

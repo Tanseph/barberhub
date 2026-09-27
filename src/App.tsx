@@ -9,6 +9,7 @@ import { Header } from './components/Header';
 import { TabPOS } from './components/TabPOS';
 import { TabDashboard } from './components/TabDashboard';
 import { TabQueue } from './components/TabQueue';
+import { TabCashDrawer } from './components/TabCashDrawer';
 import { TabExpenses } from './components/TabExpenses';
 import { TabPayslip } from './components/TabPayslip';
 import { TabSettings } from './components/TabSettings';
@@ -46,6 +47,7 @@ const MainLayout: React.FC = () => {
         {activeTab === 'pos' && <TabPOS />}
         {activeTab === 'dashboard' && <TabDashboard />}
         {activeTab === 'queue' && <TabQueue />}
+        {activeTab === 'cash-drawer' && <TabCashDrawer />}
         {activeTab === 'expenses' && <TabExpenses />}
         {activeTab === 'payslip' && <TabPayslip />}
         {activeTab === 'settings' && <TabSettings />}

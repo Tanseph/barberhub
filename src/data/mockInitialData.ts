@@ -423,6 +423,7 @@ export const CLEAN_SETTINGS: ShopSettings = {
   receiptFooterMsg: 'ขอบพระคุณที่ไว้วางใจใช้บริการ 💈✂️',
   settingsPin: '1234',
   voucherPresetAmounts: [50, 100, 200, 300, 500],
+  defaultOpeningFloat: 1000,
 };
 
 export const INITIAL_SETTINGS: ShopSettings = {
@@ -442,6 +443,7 @@ export const INITIAL_SETTINGS: ShopSettings = {
   receiptFooterMsg: 'ขอบพระคุณที่ไว้วางใจใช้บริการ หวังว่าจะได้ดูแลคุณลูกค้าในครั้งถัดไปครับ 💈✂️',
   settingsPin: '1234',
   voucherPresetAmounts: [50, 100, 200, 300, 500],
+  defaultOpeningFloat: 1000,
 };
 
 // Generate realistic initial bills for 2026-08-18 and past couple days

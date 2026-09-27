@@ -17,6 +17,7 @@ import {
   UserAccount,
   UserAccountStatus,
   UserRole,
+  CashDrawerRecord,
 } from '../types';
 import {
   CLEAN_SETTINGS,
@@ -153,6 +154,13 @@ interface AppContextType {
   clearPastQueues: () => number;
   syncAutoQueueStatuses: () => number;
 
+  // Cash Drawer & Reconciliation
+  cashDrawerRecords: CashDrawerRecord[];
+  addCashDrawerRecord: (record: Omit<CashDrawerRecord, 'id' | 'timestamp' | 'timeStr'>) => CashDrawerRecord;
+  deleteCashDrawerRecord: (id: string) => void;
+  getOpeningFloatForDate: (dateStr: string) => number;
+  setOpeningFloatForDate: (dateStr: string, amount: number) => void;
+
   // Modals & UI helpers
   toasts: ToastMessage[];
   showToast: (
@@ -215,6 +223,8 @@ function getTenantStorageKeys(shopId: string) {
     BILLS: `barber_pos_${shopId}_bills_v2`,
     EXPENSES: `barber_pos_${shopId}_expenses_v2`,
     QUEUES: `barber_pos_${shopId}_queues_v2`,
+    CASH_DRAWER: `barber_pos_${shopId}_cash_drawer_v2`,
+    OPENING_FLOATS: `barber_pos_${shopId}_opening_floats_v2`,
     DELETED_IDS: `barber_pos_${shopId}_deleted_ids_v2`,
   };
 }
@@ -481,6 +491,32 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     return [];
   });
 
+  // 7. Cash Drawer Records
+  const [cashDrawerRecords, setCashDrawerRecords] = useState<CashDrawerRecord[]>(() => {
+    if (storageKeys) {
+      try {
+        const saved = localStorage.getItem(storageKeys.CASH_DRAWER);
+        if (saved) return JSON.parse(saved);
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    return [];
+  });
+
+  // 8. Opening Floats per Date
+  const [openingFloats, setOpeningFloats] = useState<Record<string, number>>(() => {
+    if (storageKeys) {
+      try {
+        const saved = localStorage.getItem(storageKeys.OPENING_FLOATS);
+        if (saved) return JSON.parse(saved);
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    return {};
+  });
+
   // User Account & Admin SaaS state
   const [currentUserAccount, setCurrentUserAccount] = useState<UserAccount | null>(null);
   const [allUserAccounts, setAllUserAccounts] = useState<UserAccount[]>([]);
@@ -571,6 +607,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
       const savedQueues = localStorage.getItem(keys.QUEUES);
       setQueues(savedQueues ? JSON.parse(savedQueues) : []);
+
+      const savedCashDrawer = localStorage.getItem(keys.CASH_DRAWER);
+      setCashDrawerRecords(savedCashDrawer ? JSON.parse(savedCashDrawer) : []);
+
+      const savedFloats = localStorage.getItem(keys.OPENING_FLOATS);
+      setOpeningFloats(savedFloats ? JSON.parse(savedFloats) : {});
     } catch (e) {
       console.error('Error loading tenant data from localStorage', e);
     }
@@ -802,6 +844,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setBills([]);
     setExpenses([]);
     setQueues([]);
+    setCashDrawerRecords([]);
+    setOpeningFloats({});
     setPendingQueueToPos(null);
     setSelectedBillForReceipt(null);
     setEditingBill(null);
@@ -1042,6 +1086,21 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
         setQueues(activeQueues);
         localStorage.setItem(keys.QUEUES, JSON.stringify(activeQueues));
+      },
+      onCashCounts: (cloudCash) => {
+        const keys = getTenantStorageKeys(currentShopId);
+        const localCash = getLocalTenantData<CashDrawerRecord>(keys.CASH_DRAWER);
+        const cloudIdSet = new Set((cloudCash || []).map((c) => c.id));
+
+        const unsynced = localCash.filter((c) => !cloudIdSet.has(c.id));
+        for (const u of unsynced) {
+          saveDocumentToCloud(currentShopId, 'cashCounts', u).catch(console.error);
+        }
+
+        const combined = [...(cloudCash || []), ...unsynced];
+        combined.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+        setCashDrawerRecords(combined);
+        localStorage.setItem(keys.CASH_DRAWER, JSON.stringify(combined));
       },
     });
 
@@ -1883,6 +1942,73 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     };
   }, [clearPastQueues, syncAutoQueueStatuses]);
 
+  // Cash Drawer & Float operations
+  const getOpeningFloatForDate = useCallback((dateStr: string): number => {
+    if (openingFloats[dateStr] !== undefined && !isNaN(openingFloats[dateStr])) {
+      return openingFloats[dateStr];
+    }
+    return settings.defaultOpeningFloat ?? 1000;
+  }, [openingFloats, settings.defaultOpeningFloat]);
+
+  const setOpeningFloatForDate = useCallback((dateStr: string, amount: number) => {
+    const val = Math.max(0, isNaN(amount) ? 0 : amount);
+    setOpeningFloats((prev) => {
+      const next = { ...prev, [dateStr]: val };
+      if (currentShopId) {
+        const keys = getTenantStorageKeys(currentShopId);
+        localStorage.setItem(keys.OPENING_FLOATS, JSON.stringify(next));
+      }
+      return next;
+    });
+  }, [currentShopId]);
+
+  const addCashDrawerRecord = (
+    recordData: Omit<CashDrawerRecord, 'id' | 'timestamp' | 'timeStr'>
+  ): CashDrawerRecord => {
+    const now = new Date();
+    const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    const newRecord: CashDrawerRecord = {
+      ...recordData,
+      id: `cash-${Date.now()}`,
+      timestamp: now.getTime(),
+      timeStr,
+    };
+
+    setCashDrawerRecords((prev) => {
+      const next = [newRecord, ...prev];
+      if (currentShopId) {
+        const keys = getTenantStorageKeys(currentShopId);
+        localStorage.setItem(keys.CASH_DRAWER, JSON.stringify(next));
+        saveDocumentToCloud(currentShopId, 'cashCounts', newRecord).catch(console.error);
+      }
+      return next;
+    });
+
+    sounds.playCash();
+    showToast(
+      'บันทึกปิดเก๊ะสำเร็จ 💵',
+      `ยอดนับได้ ฿${newRecord.actualCounted.toLocaleString()} (${newRecord.status === 'balanced' ? 'ตรงเป๊ะ' : newRecord.status === 'surplus' ? `เกิน +฿${newRecord.difference.toLocaleString()}` : `ขาด -฿${Math.abs(newRecord.difference).toLocaleString()}`})`,
+      'success',
+      '🪙'
+    );
+
+    return newRecord;
+  };
+
+  const deleteCashDrawerRecord = (id: string) => {
+    setCashDrawerRecords((prev) => {
+      const next = prev.filter((r) => r.id !== id);
+      if (currentShopId) {
+        const keys = getTenantStorageKeys(currentShopId);
+        localStorage.setItem(keys.CASH_DRAWER, JSON.stringify(next));
+        deleteDocumentFromCloud(currentShopId, 'cashCounts', id).catch(console.error);
+      }
+      return next;
+    });
+    sounds.playDelete();
+    showToast('ลบประวัติการนับเก๊ะแล้ว', 'ลบรายการบันทึกเรียบร้อย', 'info', '🗑️');
+  };
+
   // Modals & UI controls
   const openConfirm = (options: {
     title: string;
@@ -2084,6 +2210,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         changeQueueStatus,
         clearPastQueues,
         syncAutoQueueStatuses,
+        cashDrawerRecords,
+        addCashDrawerRecord,
+        deleteCashDrawerRecord,
+        getOpeningFloatForDate,
+        setOpeningFloatForDate,
         toasts,
         showToast,
         removeToast,

@@ -1,6 +1,6 @@
 export type PaymentMethod = 'transfer' | 'cash' | 'split';
 
-export type TabType = 'pos' | 'dashboard' | 'queue' | 'expenses' | 'payslip' | 'settings';
+export type TabType = 'pos' | 'dashboard' | 'queue' | 'cash-drawer' | 'expenses' | 'payslip' | 'settings';
 
 export type QueueStatus = 'waiting' | 'in_progress' | 'completed' | 'cancelled';
 
@@ -256,4 +256,34 @@ export interface ShopSettings {
   receiptFooterMsg: string;
   settingsPin?: string; // Default '1234'
   voucherPresetAmounts?: number[]; // มูลค่า Gift Voucher ที่กำหนดไว้ในร้าน เช่น [50, 100, 200, 300, 500]
+  defaultOpeningFloat?: number; // เงินทอนเริ่มต้นเปิดเก๊ะ (บาท) เช่น 1000
+}
+
+export interface DenominationCount {
+  b1000: number; // 1,000 Baht note
+  b500: number;  // 500 Baht note
+  b100: number;  // 100 Baht note
+  b50: number;   // 50 Baht note
+  b20: number;   // 20 Baht note
+  c10: number;   // 10 Baht coin
+  c5: number;    // 5 Baht coin
+  c2: number;    // 2 Baht coin
+  c1: number;    // 1 Baht coin
+}
+
+export interface CashDrawerRecord {
+  id: string;
+  dateStr: string; // YYYY-MM-DD
+  timestamp: number;
+  timeStr: string; // HH:mm
+  openingFloat: number; // เงินทอนเริ่มต้นเปิดเก๊ะ
+  cashSales: number; // เงินสดรับเข้าจากการขายตามระบบ
+  cashExpenses: number; // เงินสดจ่ายออกค่าใช้จ่ายตามระบบ
+  expectedTotal: number; // ยอดที่ระบบคำนวณ = openingFloat + cashSales - cashExpenses
+  actualCounted: number; // ยอดเงินที่นับได้จริง
+  difference: number; // actualCounted - expectedTotal (0 = ตรงเป๊ะ, >0 = เกิน, <0 = ขาด)
+  denominations: DenominationCount;
+  countedBy: string; // ชื่อผู้ตรวจนับ
+  notes?: string; // หมายเหตุเพิ่มเติม
+  status: 'balanced' | 'surplus' | 'short'; // สถานะ: ตรงเป๊ะ | เงินเกิน | เงินขาด
 }

@@ -45,6 +45,11 @@ service cloud.firestore {
       match /queues/{queueId} {
         allow read, write: if true;
       }
+
+      // Cash Counts Subcollection
+      match /cashCounts/{countId} {
+        allow read, write: if true;
+      }
     }
   }
 }

@@ -11,6 +11,7 @@ import {
   Wallet,
   Cloud,
   FileText,
+  Coins,
 } from 'lucide-react';
 
 export const Header: React.FC = () => {
@@ -57,6 +58,11 @@ export const Header: React.FC = () => {
       label: 'จองคิว',
       icon: <CalendarDays className="w-4 h-4" />,
       badge: waitingQueues > 0 ? `${waitingQueues} คิว` : undefined,
+    },
+    {
+      id: 'cash-drawer',
+      label: 'นับเงินสด',
+      icon: <Coins className="w-4 h-4" />,
     },
     {
       id: 'expenses',
