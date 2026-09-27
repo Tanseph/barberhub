@@ -567,34 +567,6 @@ export const TabPOS: React.FC = () => {
                       className="w-full px-2 py-1.5 bg-transparent font-mono font-bold text-sm sm:text-base text-emerald-600 dark:text-emerald-400 focus:outline-none"
                     />
                   </div>
-
-                  {/* Head count control */}
-                  {numHaircut > 0 && (
-                    <div className="mt-1.5 pt-1 border-t border-dashed border-zinc-800/80 flex items-center justify-between text-[10px]">
-                      <span className="text-zinc-400 font-medium">จำนวน:</span>
-                      <div className="flex items-center gap-1">
-                        {[1, 2, 3].map((cnt) => (
-                          <button
-                            type="button"
-                            key={cnt}
-                            onClick={() => {
-                              sounds.playClick();
-                              setHeadCount(cnt);
-                            }}
-                            className={`px-1.5 py-0.5 rounded font-mono font-bold transition-all ${
-                              headCount === cnt
-                                ? 'bg-emerald-600 text-white shadow-xs'
-                                : isDark
-                                ? 'bg-zinc-800 text-zinc-400 hover:text-zinc-200'
-                                : 'bg-slate-200 text-slate-600 hover:text-slate-900'
-                            }`}
-                          >
-                            {cnt}หัว
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
                 </div>
 
                 {/* Chemical Fee */}

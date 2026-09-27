@@ -112,6 +112,19 @@ export const formatThaiDateShort = (dateStr?: string): string => {
   return `${String(d).padStart(2, '0')}/${String(m).padStart(2, '0')}/${thaiYear}`;
 };
 
+// Helper: Format YYYY-MM-DD to readable Thai Date Card "24 ก.ย. 2569"
+export const formatThaiDateCard = (dateStr?: string): string => {
+  if (!dateStr || dateStr === 'all') return 'ทุกวัน';
+  const parts = dateStr.split('-');
+  if (parts.length !== 3) return dateStr;
+  const y = parseInt(parts[0], 10);
+  const m = parseInt(parts[1], 10);
+  const d = parseInt(parts[2], 10);
+  const monthShort = THAI_MONTHS[m - 1]?.shortName || `${m}`;
+  const thaiYear = y + 543;
+  return `${d} ${monthShort} ${thaiYear}`;
+};
+
 // 24-Hour Time slots with ONLY :00 and :30 (เช่น 09.00 น., 09.30 น., 10.00 น., 10.30 น.)
 const ALL_24H_TIME_OPTIONS: string[] = [];
 // ช่วงเวลาทำการ 06:00 - 23:30
@@ -438,12 +451,12 @@ export const TabQueue: React.FC = () => {
   const [leaveEndTime, setLeaveEndTime] = useState<string>('19:00');
   const [leaveReason, setLeaveReason] = useState<string>('ลาพักร้อนประจำสัปดาห์');
 
-  // Filter in Queue list (default to real-time today)
-  const [filterDate, setFilterDate] = useState<string>(() => getTodayDateStr());
+  // Filter in Queue list (default to all to view date boxes, or filter by date)
+  const [filterDate, setFilterDate] = useState<string>('all');
   const [filterBarber, setFilterBarber] = useState<string>('all');
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
-  const [queueViewMode, setQueueViewMode] = useState<'boxes' | 'list'>('boxes');
+  const [queueViewMode, setQueueViewMode] = useState<'date-boxes' | 'barber-boxes' | 'list'>('date-boxes');
   const [editingQueue, setEditingQueue] = useState<QueueBooking | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState<boolean>(false);
 
@@ -540,7 +553,11 @@ export const TabQueue: React.FC = () => {
           q.barberName.toLowerCase().includes(query);
         return matchDate && matchBarber && matchStatus && matchSearch && !q.isLeaveOrBlocked;
       })
-      .sort((a, b) => a.startTime.localeCompare(b.startTime));
+      .sort((a, b) => {
+        const dateCmp = (a.date || '').localeCompare(b.date || '');
+        if (dateCmp !== 0) return dateCmp;
+        return (a.startTime || '').localeCompare(b.startTime || '');
+      });
   }, [queues, subTab, filterDate, filterBarber, filterStatus, searchQuery]);
 
   // Statistics for selected date
@@ -556,6 +573,56 @@ export const TabQueue: React.FC = () => {
       cancelled: dayQueues.filter((q) => q.status === 'cancelled').length,
     };
   }, [queues, filterDate]);
+
+  // Group queues by date for Date Boxes view:
+  // "ถ้าอยู่ในวันเดียวกันให้เป็นอยู่ Box เดียวกัน Box ของวันนั้นๆ"
+  const dateQueueGroups = useMemo(() => {
+    const map = new Map<string, QueueBooking[]>();
+
+    visibleQueues.forEach((q) => {
+      const dateKey = q.date || getTodayDateStr();
+      if (!map.has(dateKey)) {
+        map.set(dateKey, []);
+      }
+      map.get(dateKey)!.push(q);
+    });
+
+    // If filterDate is set to a specific single date, make sure it is present
+    if (filterDate !== 'all' && !map.has(filterDate)) {
+      map.set(filterDate, []);
+    } else if (filterDate === 'all' && map.size === 0) {
+      map.set(getTodayDateStr(), []);
+    }
+
+    const sortedDates = Array.from(map.keys()).sort();
+
+    return sortedDates.map((dateKey) => {
+      const dayQueues = map.get(dateKey) || [];
+      dayQueues.sort((a, b) => (a.startTime || '').localeCompare(b.startTime || ''));
+
+      const waiting = dayQueues.filter((q) => q.status === 'waiting').length;
+      const inProgress = dayQueues.filter((q) => q.status === 'in_progress').length;
+      const completed = dayQueues.filter((q) => q.status === 'completed').length;
+      const cancelled = dayQueues.filter((q) => q.status === 'cancelled').length;
+
+      const isToday = dateKey === getTodayDateStr();
+      const isTomorrow = dateKey === getTomorrowDateStr();
+
+      return {
+        date: dateKey,
+        isToday,
+        isTomorrow,
+        queues: dayQueues,
+        stats: {
+          total: dayQueues.length,
+          waiting,
+          inProgress,
+          completed,
+          cancelled,
+        },
+      };
+    });
+  }, [visibleQueues, filterDate]);
 
   // Group queues by barber for Barber Boxes view
   const barberQueueGroups = useMemo(() => {
@@ -676,6 +743,33 @@ export const TabQueue: React.FC = () => {
               }`}
             >
               {q.queueNumber}
+            </span>
+
+            {/* วันที่จอง */}
+            <span
+              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-bold shrink-0 border ${
+                q.date === getTodayDateStr()
+                  ? isDark
+                    ? 'bg-amber-500/15 text-amber-300 border-amber-500/30'
+                    : 'bg-amber-50 text-amber-800 border-amber-300'
+                  : isDark
+                  ? 'bg-zinc-800 text-zinc-300 border-zinc-700'
+                  : 'bg-slate-100 text-slate-700 border-slate-200'
+              }`}
+              title={`วันที่จอง: ${formatThaiDateWithWeekday(q.date)}`}
+            >
+              <Calendar className="w-3 h-3 text-amber-500 shrink-0" />
+              <span>{formatThaiDateCard(q.date)}</span>
+              {q.date === getTodayDateStr() && (
+                <span className="px-1 py-0.2 rounded text-[9px] font-black bg-amber-500 text-zinc-950 ml-0.5">
+                  วันนี้
+                </span>
+              )}
+              {q.date === getTomorrowDateStr() && (
+                <span className="px-1 py-0.2 rounded text-[9px] font-bold bg-sky-500 text-white ml-0.5">
+                  พรุ่งนี้
+                </span>
+              )}
             </span>
 
             <span className="font-mono text-xs font-bold text-amber-600 dark:text-amber-400 flex items-center gap-1 shrink-0">
@@ -1033,7 +1127,7 @@ export const TabQueue: React.FC = () => {
 
                 {/* View Mode Switcher & Quick Status Stats Badges */}
                 <div className="flex flex-col sm:flex-row sm:items-center gap-2.5 flex-wrap">
-                  {/* View Mode Toggle: Barber Boxes vs List */}
+                  {/* View Mode Toggle: Date Boxes vs Barber Boxes vs List */}
                   <div className={`flex items-center rounded-xl p-0.5 border shrink-0 ${
                     isDark ? 'bg-zinc-950 border-zinc-800' : 'bg-slate-100 border-slate-200'
                   }`}>
@@ -1041,10 +1135,30 @@ export const TabQueue: React.FC = () => {
                       type="button"
                       onClick={() => {
                         sounds.playClick();
-                        setQueueViewMode('boxes');
+                        setQueueViewMode('date-boxes');
                       }}
                       className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold transition-all btn-tactile ${
-                        queueViewMode === 'boxes'
+                        queueViewMode === 'date-boxes'
+                          ? isDark
+                            ? 'bg-amber-500 text-zinc-950 shadow-md'
+                            : 'bg-white text-slate-900 shadow-xs'
+                          : isDark
+                          ? 'text-zinc-400 hover:text-white'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                      title="แยก Box ตามวัน: รวมคิวที่อยู่ในวันเดียวกันไว้ใน Box เดียวกัน"
+                    >
+                      <Calendar className="w-3.5 h-3.5" />
+                      <span>แยก Box ตามวัน</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        sounds.playClick();
+                        setQueueViewMode('barber-boxes');
+                      }}
+                      className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold transition-all btn-tactile ${
+                        queueViewMode === 'barber-boxes'
                           ? isDark
                             ? 'bg-amber-500 text-zinc-950 shadow-md'
                             : 'bg-white text-slate-900 shadow-xs'
@@ -1273,8 +1387,8 @@ export const TabQueue: React.FC = () => {
               </div>
             </div>
 
-            {/* Queue Content: Barber Boxes View or Compact List View */}
-            {visibleQueues.length === 0 && (!barberQueueGroups.some((g) => g.queues.length > 0)) ? (
+            {/* Queue Content: Date Boxes View (Default) or Barber Boxes View or Compact List View */}
+            {visibleQueues.length === 0 && (!dateQueueGroups.some((g) => g.queues.length > 0)) ? (
               <div className={`py-12 text-center rounded-xl border ${
                 isDark ? 'text-zinc-500 bg-zinc-950/40 border-zinc-800/60' : 'text-slate-400 bg-slate-50 border-slate-200'
               }`}>
@@ -1282,7 +1396,153 @@ export const TabQueue: React.FC = () => {
                 <p className="text-sm font-semibold">ยังไม่มีรายการจองคิวในวันที่เลือก</p>
                 <p className="text-xs text-slate-500 mt-1">สามารถสร้างคิวใหม่ได้จากแบบฟอร์มด้านซ้าย</p>
               </div>
-            ) : queueViewMode === 'boxes' ? (
+            ) : queueViewMode === 'date-boxes' ? (
+              /* Date Boxes View: "ถ้าอยู่ในวันเดียวกันให้เป็นอยู่ Box เดียวกัน Box ของวันนั้นๆ" */
+              <div className="space-y-4 max-h-[72vh] overflow-y-auto pr-1">
+                {dateQueueGroups.map((dateGroup) => (
+                  <div
+                    key={dateGroup.date}
+                    className={`rounded-2xl border transition-all ${
+                      dateGroup.isToday
+                        ? isDark
+                          ? 'bg-zinc-900/95 border-amber-500/50 shadow-md ring-1 ring-amber-500/20'
+                          : 'bg-white border-amber-300 shadow-md ring-1 ring-amber-400/25'
+                        : isDark
+                        ? 'bg-zinc-900/85 border-zinc-800 shadow-xs'
+                        : 'bg-white border-slate-200 shadow-xs'
+                    } flex flex-col overflow-hidden`}
+                  >
+                    {/* Box Header for this Date */}
+                    <div
+                      className={`p-3 sm:p-4 border-b flex flex-wrap items-center justify-between gap-2.5 ${
+                        dateGroup.isToday
+                          ? isDark
+                            ? 'bg-amber-500/10 border-amber-500/30'
+                            : 'bg-amber-50/90 border-amber-200'
+                          : isDark
+                          ? 'bg-zinc-950/70 border-zinc-800'
+                          : 'bg-slate-50/90 border-slate-100'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        {/* Month / Day Badge */}
+                        <div
+                          className={`w-11 h-11 rounded-xl flex flex-col items-center justify-center shrink-0 shadow-xs font-bold ${
+                            dateGroup.isToday
+                              ? 'bg-amber-500 text-zinc-950'
+                              : isDark
+                              ? 'bg-zinc-800 text-zinc-200 border border-zinc-700'
+                              : 'bg-slate-200 text-slate-800'
+                          }`}
+                        >
+                          <span className="text-[10px] uppercase font-bold leading-none">
+                            {THAI_MONTHS[parseInt(dateGroup.date.split('-')[1] || '1', 10) - 1]?.shortName || ''}
+                          </span>
+                          <span className="text-lg leading-tight font-black">
+                            {parseInt(dateGroup.date.split('-')[2] || '1', 10)}
+                          </span>
+                        </div>
+
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <h4 className={`text-sm sm:text-base font-extrabold ${headingText}`}>
+                              {formatThaiDateWithWeekday(dateGroup.date)}
+                            </h4>
+                            {dateGroup.isToday && (
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-500 text-zinc-950 shadow-2xs flex items-center gap-1">
+                                <span className="w-1.5 h-1.5 rounded-full bg-zinc-950 animate-ping" />
+                                <span>วันนี้ (Today)</span>
+                              </span>
+                            )}
+                            {dateGroup.isTomorrow && (
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-sky-500 text-white shadow-2xs">
+                                พรุ่งนี้
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2 mt-0.5 text-[11px] font-semibold text-slate-500 dark:text-zinc-400 flex-wrap">
+                            <span className="text-amber-600 dark:text-amber-400 font-bold">
+                              รอตัด: {dateGroup.stats.waiting}
+                            </span>
+                            <span>•</span>
+                            <span className="text-sky-600 dark:text-sky-400 font-bold">
+                              กำลังตัด: {dateGroup.stats.inProgress}
+                            </span>
+                            <span>•</span>
+                            <span className="text-emerald-600 dark:text-emerald-400 font-bold">
+                              เสร็จแล้ว: {dateGroup.stats.completed}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Right: Total Count & Quick Add button */}
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span
+                          className={`px-2.5 py-1 rounded-lg text-xs font-black border flex items-center gap-1.5 ${
+                            dateGroup.stats.total > 0
+                              ? isDark
+                                ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                                : 'bg-amber-50 text-amber-800 border-amber-300'
+                              : isDark
+                              ? 'bg-zinc-800 text-zinc-400 border-zinc-700'
+                              : 'bg-slate-100 text-slate-500 border-slate-200'
+                          }`}
+                        >
+                          <Calendar className="w-3.5 h-3.5 text-amber-500" />
+                          <span>{dateGroup.stats.total} คิว</span>
+                        </span>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            sounds.playClick();
+                            setBookingDate(dateGroup.date);
+                            const el = document.getElementById('queue-booking-form');
+                            if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                          }}
+                          className={`px-2.5 py-1.5 rounded-lg border text-xs font-bold transition-all flex items-center gap-1 btn-tactile ${
+                            isDark
+                              ? 'bg-zinc-800 hover:bg-zinc-700 border-zinc-700 text-zinc-200'
+                              : 'bg-white hover:bg-slate-100 border-slate-200 text-slate-700 shadow-2xs'
+                          }`}
+                          title={`จองคิวเพิ่มสำหรับวันที่ ${formatThaiDateFull(dateGroup.date)}`}
+                        >
+                          <Plus className="w-3.5 h-3.5 text-amber-500" />
+                          <span className="hidden sm:inline">จองคิววันนี้</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Bookings inside this Date Box */}
+                    <div className="p-3 sm:p-3.5 space-y-2.5">
+                      {dateGroup.queues.length === 0 ? (
+                        <div className={`py-6 px-3 text-center rounded-xl border border-dashed ${
+                          isDark ? 'border-zinc-800 text-zinc-500 bg-zinc-950/20' : 'border-slate-200 text-slate-400 bg-slate-50/50'
+                        }`}>
+                          <p className="text-xs font-medium">ยังไม่มีรายการจองคิวสำหรับวันนี้</p>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              sounds.playClick();
+                              setBookingDate(dateGroup.date);
+                              const el = document.getElementById('queue-booking-form');
+                              if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                            }}
+                            className="mt-1.5 text-[11px] font-bold text-amber-600 hover:text-amber-500 inline-flex items-center gap-1"
+                          >
+                            <Plus className="w-3 h-3" />
+                            <span>คลิกเพื่อลงคิวสำหรับวันที่นี้</span>
+                          </button>
+                        </div>
+                      ) : (
+                        dateGroup.queues.map((q) => renderQueueCard(q, true))
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : queueViewMode === 'barber-boxes' ? (
               /* Barber Boxes View */
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-[72vh] overflow-y-auto pr-1">
                 {barberQueueGroups.map((group) => {
