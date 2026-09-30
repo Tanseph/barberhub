@@ -265,6 +265,69 @@ function clearDeletedIds(shopId: string) {
   } catch {}
 }
 
+// Helper: Normalize bill numbers so each bill's billNumber strictly matches its dateStr
+// If a bill was recorded on the wrong date and moved, or has an outdated date code in billNumber,
+// this assigns the next available sequential number for that date so it appends at the bottom.
+export function normalizeBillNumbers(rawBills: SaleBill[]): { bills: SaleBill[]; changed: boolean } {
+  const billsByDate: Record<string, SaleBill[]> = {};
+  for (const b of rawBills) {
+    const d = b.dateStr || 'unknown';
+    if (!billsByDate[d]) billsByDate[d] = [];
+    billsByDate[d].push(b);
+  }
+
+  let hasAnyChange = false;
+  const result: SaleBill[] = [];
+
+  for (const dateStr of Object.keys(billsByDate)) {
+    const group = billsByDate[dateStr];
+    if (dateStr === 'unknown') {
+      result.push(...group);
+      continue;
+    }
+    const parts = dateStr.split('-');
+    if (parts.length !== 3) {
+      result.push(...group);
+      continue;
+    }
+    const dateCode = `${parts[0].slice(-2)}${parts[1]}${parts[2]}`;
+    const prefix = `B${dateCode}-`;
+
+    // Check if any bill in this date group has mismatched dateCode
+    const needsFix = group.some((b) => b.billNumber && !b.billNumber.startsWith(prefix));
+    if (!needsFix) {
+      result.push(...group);
+      continue;
+    }
+
+    // Find max sequence among valid bills on this date
+    let maxSeq = 0;
+    for (const b of group) {
+      if (b.billNumber && b.billNumber.startsWith(prefix)) {
+        const match = b.billNumber.match(/-(\d+)$/);
+        if (match) {
+          const num = parseInt(match[1], 10);
+          if (!isNaN(num) && num > maxSeq) maxSeq = num;
+        }
+      }
+    }
+
+    // Assign new sequential numbers to the mismatched bills
+    for (const b of group) {
+      if (b.billNumber && !b.billNumber.startsWith(prefix)) {
+        maxSeq++;
+        hasAnyChange = true;
+        const newNum = `B${dateCode}-${String(maxSeq).padStart(3, '0')}`;
+        result.push({ ...b, billNumber: newNum });
+      } else {
+        result.push(b);
+      }
+    }
+  }
+
+  return { bills: hasAnyChange ? result : rawBills, changed: hasAnyChange };
+}
+
 // Helper: Standardize time string into HH:mm format for reliable comparison
 export const normalizeTimeStr = (t?: string): string => {
   if (!t) return '00:00';
@@ -447,7 +510,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             ...b,
             headCount: b.haircutFee > 0 ? (typeof b.headCount === 'number' && b.headCount > 0 ? b.headCount : 1) : 0,
           }));
-          return normalized.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0) || b.billNumber.localeCompare(a.billNumber));
+          const { bills: renumbered, changed } = normalizeBillNumbers(normalized);
+          if (changed && currentShopId) {
+            localStorage.setItem(storageKeys.BILLS, JSON.stringify(renumbered));
+          }
+          return renumbered.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0) || b.billNumber.localeCompare(a.billNumber));
         }
       } catch (e) {
         console.error(e);
@@ -594,13 +661,20 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       setProducts(savedProducts ? JSON.parse(savedProducts) : []);
 
       const savedBills = localStorage.getItem(keys.BILLS);
-      setBills(
-        savedBills
-          ? (JSON.parse(savedBills) as SaleBill[]).sort(
-              (a, b) => (b.timestamp || 0) - (a.timestamp || 0) || b.billNumber.localeCompare(a.billNumber)
-            )
-          : []
-      );
+      if (savedBills) {
+        const parsed: SaleBill[] = JSON.parse(savedBills);
+        const { bills: renumbered, changed } = normalizeBillNumbers(parsed);
+        if (changed) {
+          localStorage.setItem(keys.BILLS, JSON.stringify(renumbered));
+        }
+        setBills(
+          renumbered.sort(
+            (a, b) => (b.timestamp || 0) - (a.timestamp || 0) || b.billNumber.localeCompare(a.billNumber)
+          )
+        );
+      } else {
+        setBills([]);
+      }
 
       const savedExpenses = localStorage.getItem(keys.EXPENSES);
       setExpenses(savedExpenses ? JSON.parse(savedExpenses) : []);
@@ -1024,12 +1098,18 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           ...b,
           headCount: b.haircutFee > 0 ? (typeof b.headCount === 'number' && b.headCount > 0 ? b.headCount : 1) : 0,
         }));
-        normalized.sort(
+        const { bills: renumbered, changed } = normalizeBillNumbers(normalized);
+        if (changed) {
+          for (const rb of renumbered) {
+            saveDocumentToCloud(currentShopId, 'bills', rb).catch(console.error);
+          }
+        }
+        renumbered.sort(
           (a, b) => (b.timestamp || 0) - (a.timestamp || 0) || b.billNumber.localeCompare(a.billNumber)
         );
 
-        setBills(normalized);
-        localStorage.setItem(keys.BILLS, JSON.stringify(normalized));
+        setBills(renumbered);
+        localStorage.setItem(keys.BILLS, JSON.stringify(renumbered));
         setCloudSyncStatus('synced');
       },
       onExpenses: (cloudExpenses) => {
@@ -1434,9 +1514,60 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   const updateSaleBill = (id: string, updates: Partial<SaleBill>) => {
     setBills((prev) => {
+      const targetBill = prev.find((b) => b.id === id);
+      if (!targetBill) return prev;
+
+      const newDate = updates.dateStr || targetBill.dateStr;
+      const isDateChanged = Boolean(updates.dateStr && updates.dateStr !== targetBill.dateStr);
+
+      const parts = newDate.split('-');
+      const targetDateCode = parts.length === 3 ? `${parts[0].slice(-2)}${parts[1]}${parts[2]}` : '';
+      const isBillNumberMismatched = Boolean(
+        targetDateCode && targetBill.billNumber && !targetBill.billNumber.startsWith(`B${targetDateCode}-`)
+      );
+
+      const mergedGroupId = targetBill.mergedGroupId;
+      const isPartOfGroup = Boolean(mergedGroupId && isDateChanged);
+
+      // Exclude ids
+      const excludeIds = new Set<string>([id]);
+      if (isPartOfGroup) {
+        for (const b of prev) {
+          if (b.mergedGroupId === mergedGroupId) excludeIds.add(b.id);
+        }
+      }
+
+      // If date changed or billNumber dateCode doesn't match newDate, assign new billNumber for newDate
+      let assignedBillNumber = targetBill.billNumber;
+      let nextSeqCounter = 0;
+
+      if (isDateChanged || isBillNumberMismatched) {
+        let maxSeq = 0;
+        for (const b of prev) {
+          if (!excludeIds.has(b.id)) {
+            if ((b.dateStr === newDate || (b.billNumber && b.billNumber.startsWith(`B${targetDateCode}-`))) && b.billNumber) {
+              const match = b.billNumber.match(/-(\d+)$/);
+              if (match) {
+                const num = parseInt(match[1], 10);
+                if (!isNaN(num) && num > maxSeq) {
+                  maxSeq = num;
+                }
+              }
+            }
+          }
+        }
+        nextSeqCounter = maxSeq + 1;
+        assignedBillNumber = `B${targetDateCode}-${String(nextSeqCounter).padStart(3, '0')}`;
+      }
+
       const next = prev.map((bill) => {
         if (bill.id === id) {
           const updated = { ...bill, ...updates };
+
+          if (isDateChanged || isBillNumberMismatched) {
+            updated.billNumber = assignedBillNumber;
+          }
+
           // Ensure headCount is 0 if no haircut fee
           if (updated.haircutFee === 0) {
             updated.headCount = 0;
@@ -1445,19 +1576,22 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           } else if (!updated.headCount || updated.headCount < 1) {
             updated.headCount = 1;
           }
+
+          // Update timestamp to match newDate and timeStr
           if (updates.dateStr || updates.timeStr) {
-            const newDate = updates.dateStr || bill.dateStr;
-            const newTime = updates.timeStr || bill.timeStr;
-            if (newDate && newTime && !updates.timestamp) {
-              const [y, m, d] = newDate.split('-').map(Number);
-              const clean = newTime.replace(/[^\d:.]/g, '').replace('.', ':');
+            const billDateStr = updates.dateStr || bill.dateStr;
+            const billTimeStr = updates.timeStr || bill.timeStr;
+            if (billDateStr && billTimeStr) {
+              const [yN, mN, dN] = billDateStr.split('-').map(Number);
+              const clean = billTimeStr.replace(/[^\d:.]/g, '').replace('.', ':');
               const [hh, mm] = clean.split(':').map(Number);
-              const parsedT = new Date(y, (m || 1) - 1, d || 1, hh || 0, mm || 0, 0, 0).getTime();
+              const parsedT = new Date(yN, (mN || 1) - 1, dN || 1, hh || 0, mm || 0, 0, 0).getTime();
               if (!isNaN(parsedT) && parsedT > 0) {
                 updated.timestamp = parsedT;
               }
             }
           }
+
           if (!updates.commission) {
             updated.commission = calculateCommission(
               updated.barberId,
@@ -1468,19 +1602,51 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
               updated.totalDiscountAmount
             );
           }
+
           if (currentShopId) {
             saveDocumentToCloud(currentShopId, 'bills', updated).catch(console.error);
           }
           return updated;
         }
+
+        // Sibling in the same merged group moving together to newDate
+        if (isPartOfGroup && bill.mergedGroupId === mergedGroupId) {
+          nextSeqCounter++;
+          const siblingBillNumber = `B${targetDateCode}-${String(nextSeqCounter).padStart(3, '0')}`;
+          const updatedSibling: SaleBill = {
+            ...bill,
+            dateStr: newDate,
+            billNumber: siblingBillNumber,
+          };
+          if (updates.timeStr) {
+            updatedSibling.timeStr = updates.timeStr;
+          }
+          const sTime = updatedSibling.timeStr || bill.timeStr;
+          if (newDate && sTime) {
+            const [yN, mN, dN] = newDate.split('-').map(Number);
+            const clean = sTime.replace(/[^\d:.]/g, '').replace('.', ':');
+            const [hh, mm] = clean.split(':').map(Number);
+            const parsedT = new Date(yN, (mN || 1) - 1, dN || 1, hh || 0, mm || 0, 0, 0).getTime();
+            if (!isNaN(parsedT) && parsedT > 0) {
+              updatedSibling.timestamp = parsedT;
+            }
+          }
+          if (currentShopId) {
+            saveDocumentToCloud(currentShopId, 'bills', updatedSibling).catch(console.error);
+          }
+          return updatedSibling;
+        }
+
         return bill;
       });
+
       if (currentShopId) {
         const keys = getTenantStorageKeys(currentShopId);
         localStorage.setItem(keys.BILLS, JSON.stringify(next));
       }
       return next;
     });
+
     sounds.playSuccess();
     showToast('แก้ไขข้อมูลบิลแล้ว', 'อัปเดตรายละเอียดบิลยอดขายเรียบร้อย 📄', 'success', '👍');
   };

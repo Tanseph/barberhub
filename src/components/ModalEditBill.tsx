@@ -195,6 +195,18 @@ export const ModalEditBill: React.FC = () => {
                 className={`${inputClass} font-mono`}
               />
             </div>
+
+            {billDate && editingBill.dateStr && billDate !== editingBill.dateStr && (
+              <div className="sm:col-span-2 p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs text-amber-700 dark:text-amber-300 flex items-start gap-2">
+                <span className="text-base shrink-0">📅</span>
+                <div>
+                  <div className="font-bold">เปลี่ยนวันที่จาก {editingBill.dateStr} เป็น {billDate}</div>
+                  <div className="text-[11px] opacity-90 mt-0.5">
+                    ระบบจะจัดลำดับและออกเลขบิลใหม่สำหรับวันที่ {billDate} ให้อัตโนมัติ เพื่อให้รายการต่อท้ายบิลอื่นในวันนั้นอย่างเป็นระเบียบ ไม่แทรกระหว่างบิลอื่น
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Customer Name */}

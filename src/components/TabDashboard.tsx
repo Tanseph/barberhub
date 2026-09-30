@@ -194,8 +194,19 @@ export const TabDashboard: React.FC = () => {
   }, [expenses, viewMode, selectedDate, startDate, endDate]);
 
   // Helper to extract sequence number from billNumber (e.g. B260906-001 -> 1)
-  const getBillSequence = (billNum: string): number => {
+  const getBillSequence = (billNum: string, forDateStr?: string): number => {
     if (!billNum) return 0;
+    if (forDateStr) {
+      const parts = forDateStr.split('-');
+      if (parts.length === 3) {
+        const expectedCode = `${parts[0].slice(-2)}${parts[1]}${parts[2]}`;
+        // If billNumber belongs to a different date, it was moved from another day
+        // Return 999999 so it sorts at the bottom and never inserts between other bills!
+        if (!billNum.startsWith(`B${expectedCode}-`)) {
+          return 999999;
+        }
+      }
+    }
     const match = billNum.match(/-(\d+)$/);
     return match ? parseInt(match[1], 10) : 0;
   };
@@ -313,13 +324,20 @@ export const TabDashboard: React.FC = () => {
         return true;
       })
       .sort((a, b) => {
-        const seqA = getBillSequence(a.billNumber);
-        const seqB = getBillSequence(b.billNumber);
+        // If dates are different (e.g. in monthly view), sort by date first
+        if (a.dateStr !== b.dateStr) {
+          return dailySortOrder === 'asc'
+            ? a.dateStr.localeCompare(b.dateStr)
+            : b.dateStr.localeCompare(a.dateStr);
+        }
+
+        const seqA = getBillSequence(a.billNumber, a.dateStr);
+        const seqB = getBillSequence(b.billNumber, b.dateStr);
         const epochA = getBillEpoch(a);
         const epochB = getBillEpoch(b);
 
         if (dailySortOrder === 'asc') {
-          // เรียงตามลำดับแรกไปล่าสุด (1, 2, 3... ตามที่ลงบันทึก)
+          // เรียงตามลำดับแรกไปล่าสุด (1, 2, 3... ต่อลงมาข้างล่างเรื่อยๆ)
           if (seqA > 0 && seqB > 0 && seqA !== seqB) {
             return seqA - seqB;
           }
