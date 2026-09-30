@@ -31,6 +31,7 @@ import {
   EyeOff,
   ArrowLeft,
   Gift,
+  UserCheck,
 } from 'lucide-react';
 import { sounds } from '../utils/sound';
 import { getBillingCycleInfo } from '../utils/billingCycle';
@@ -131,6 +132,49 @@ export const TabSettings: React.FC = () => {
     updateSettings({ voucherPresetAmounts: defaults });
     sounds.playSuccess();
     showToast('คืนค่าเริ่มต้น Voucher', 'ตั้งเป็น 50, 100, 200, 300, 500 เรียบร้อย', 'info');
+  };
+
+  // Booking Recorders State (รายชื่อผู้บันทึกคิวจอง)
+  const [bookingRecorders, setBookingRecorders] = useState<string[]>(
+    settings.bookingRecorders && settings.bookingRecorders.length > 0
+      ? settings.bookingRecorders
+      : ['เจ้าของร้าน', 'แอดมินเพจ']
+  );
+  const [newRecorderInput, setNewRecorderInput] = useState<string>('');
+
+  const handleAddRecorder = (nameToAdd?: string) => {
+    const val = (nameToAdd ?? newRecorderInput).trim();
+    if (!val) return;
+    if (bookingRecorders.includes(val)) {
+      showToast('มีรายชื่อนี้อยู่แล้ว', `ผู้บันทึก "${val}" มีในรายการแล้ว`, 'warning');
+      return;
+    }
+    const updated = [...bookingRecorders, val];
+    setBookingRecorders(updated);
+    updateSettings({ bookingRecorders: updated });
+    setNewRecorderInput('');
+    sounds.playSuccess();
+    showToast('เพิ่มผู้บันทึกคิวจองสำเร็จ 👤', `เพิ่ม "${val}" ในรายชื่อผู้บันทึกแล้ว`, 'success');
+  };
+
+  const handleRemoveRecorder = (nameToRemove: string) => {
+    if (bookingRecorders.length <= 1) {
+      showToast('ไม่สามารถลบได้', 'ต้องมีรายชื่อผู้บันทึกอย่างน้อย 1 คน', 'warning');
+      return;
+    }
+    const updated = bookingRecorders.filter((name) => name !== nameToRemove);
+    setBookingRecorders(updated);
+    updateSettings({ bookingRecorders: updated });
+    sounds.playClick();
+    showToast('ลบรายชื่อแล้ว', `ลบ "${nameToRemove}" ออกจากรายชื่อผู้บันทึกแล้ว`, 'info');
+  };
+
+  const handleResetRecordersToDefault = () => {
+    const defaults = ['เจ้าของร้าน', 'แอดมินเพจ'];
+    setBookingRecorders(defaults);
+    updateSettings({ bookingRecorders: defaults });
+    sounds.playSuccess();
+    showToast('คืนค่าเริ่มต้นผู้บันทึกคิว', 'ตั้งค่าเป็น "เจ้าของร้าน" และ "แอดมินเพจ" เรียบร้อย', 'info');
   };
 
   // Barber Modal State (Add or Edit)
@@ -252,6 +296,7 @@ export const TabSettings: React.FC = () => {
       defaultProductCommission: Number(defaultProductCommission) || 10,
       queueSlotDuration: Number(queueSlotDuration) || 45,
       billingCycleCutoffDay: Number(billingCycleCutoffDay) || 0,
+      bookingRecorders,
     });
     sounds.playSuccess();
     showToast('บันทึกการตั้งค่าร้านสำเร็จ 💾', 'บันทึกข้อมูลและวันตัดรอบบิลเรียบร้อยแล้ว', 'success');
@@ -1078,13 +1123,160 @@ export const TabSettings: React.FC = () => {
         </div>
       </div>
 
-      {/* 5. BARBER MANAGEMENT */}
+      {/* 5. QUEUE BOOKING RECORDERS (รายชื่อผู้บันทึกคิวจอง) */}
+      <div className={`${theme.bgCard} rounded-2xl p-5 sm:p-6 space-y-5 transition-all`}>
+        <div className={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b ${borderSubtle}`}>
+          <div className="flex items-center gap-2">
+            <UserCheck className="w-5 h-5 text-amber-500" />
+            <div>
+              <h3 className={`text-base font-bold ${headingText}`}>
+                5. รายชื่อผู้บันทึกคิวจอง (Queue Booking Recorders)
+              </h3>
+              <p className={`text-xs ${mutedText} mt-0.5`}>
+                กำหนดรายชื่อผู้รับเรื่องหรือผู้บันทึกคิวจอง (เช่น เจ้าของร้าน, แอดมินเพจ, แคชเชียร์ หรือชื่อช่าง) เพื่อให้เลือกตอนบันทึกคิวในหน้าจองคิว
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={handleResetRecordersToDefault}
+            className={`self-start sm:self-auto px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all btn-tactile ${
+              isDark
+                ? 'bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border-zinc-700'
+                : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200'
+            }`}
+          >
+            คืนค่าเริ่มต้น
+          </button>
+        </div>
+
+        {/* Current Recorders Chips */}
+        <div className="space-y-2.5">
+          <label className={`block text-xs font-semibold ${mutedText}`}>
+            รายชื่อผู้บันทึกที่เปิดใช้งานในระบบขณะนี้ ({bookingRecorders.length} คน):
+          </label>
+          <div className="flex flex-wrap gap-2.5">
+            {bookingRecorders.map((name) => (
+              <div
+                key={name}
+                className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl border font-bold text-sm shadow-xs transition-all ${
+                  isDark
+                    ? 'bg-purple-950/40 border-purple-500/40 text-purple-300'
+                    : 'bg-purple-50 border-purple-200 text-purple-800'
+                }`}
+              >
+                <span>👤</span>
+                <span>{name}</span>
+                <button
+                  type="button"
+                  onClick={() => handleRemoveRecorder(name)}
+                  className={`p-1 rounded-lg transition-colors ${
+                    isDark
+                      ? 'hover:bg-purple-900/60 text-purple-400 hover:text-rose-400'
+                      : 'hover:bg-purple-200 text-purple-500 hover:text-rose-600'
+                  }`}
+                  title={`ลบ ${name}`}
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Add New Recorder Form */}
+        <div className={`p-4 rounded-xl border space-y-3 ${
+          isDark ? 'bg-zinc-950/60 border-zinc-800' : 'bg-slate-50 border-slate-200'
+        }`}>
+          <label className={`block text-xs font-bold ${headingText}`}>
+            + เพิ่มรายชื่อผู้บันทึกคิวจองใหม่
+          </label>
+          <div className="flex flex-col sm:flex-row gap-2">
+            <div className="relative flex-1">
+              <input
+                type="text"
+                value={newRecorderInput}
+                onChange={(e) => setNewRecorderInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleAddRecorder();
+                  }
+                }}
+                placeholder="พิมพ์ชื่อผู้บันทึก เช่น แอดมิน LINE, แคชเชียร์, ผู้จัดการ..."
+                className={inputClass}
+              />
+            </div>
+            <button
+              type="button"
+              onClick={() => handleAddRecorder()}
+              disabled={!newRecorderInput.trim()}
+              className={`px-5 py-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition-all btn-tactile ${
+                newRecorderInput.trim()
+                  ? 'bg-amber-500 hover:bg-amber-400 text-zinc-950 shadow-md shadow-amber-500/20'
+                  : 'bg-zinc-800 text-zinc-500 cursor-not-allowed border border-zinc-700/50'
+              }`}
+            >
+              <Plus className="w-4 h-4" />
+              <span>เพิ่มรายชื่อ</span>
+            </button>
+          </div>
+
+          {/* Quick presets suggestions */}
+          <div className="space-y-1.5 pt-1">
+            <div className={`text-[11px] font-semibold ${mutedText}`}>
+              ⚡ คลิกเพื่อเพิ่มด่วน:
+            </div>
+            <div className="flex flex-wrap items-center gap-1.5">
+              {/* Barbers suggestions */}
+              {barbers
+                .map((b) => b.nickname || b.name)
+                .filter((nickname) => !bookingRecorders.includes(nickname))
+                .slice(0, 6)
+                .map((nickname) => (
+                  <button
+                    key={nickname}
+                    type="button"
+                    onClick={() => handleAddRecorder(nickname)}
+                    className={`px-2.5 py-1 rounded-lg border text-xs font-semibold transition-all btn-tactile flex items-center gap-1 ${
+                      isDark
+                        ? 'bg-zinc-900 hover:bg-zinc-800 border-zinc-700 text-amber-400 hover:text-amber-300'
+                        : 'bg-white hover:bg-slate-100 border-slate-200 text-amber-700 hover:text-amber-800'
+                    }`}
+                  >
+                    <span>+ ช่าง{nickname}</span>
+                  </button>
+                ))}
+
+              {/* General role suggestions */}
+              {['ผู้จัดการร้าน', 'พนักงานต้อนรับ', 'แคชเชียร์', 'แอดมิน LINE OA', 'แอดมินเพจ FB']
+                .filter((r) => !bookingRecorders.includes(r))
+                .map((role) => (
+                  <button
+                    key={role}
+                    type="button"
+                    onClick={() => handleAddRecorder(role)}
+                    className={`px-2.5 py-1 rounded-lg border text-xs font-semibold transition-all btn-tactile ${
+                      isDark
+                        ? 'bg-zinc-900 hover:bg-zinc-800 border-zinc-700 text-zinc-300 hover:text-white'
+                        : 'bg-white hover:bg-slate-100 border-slate-200 text-slate-700'
+                    }`}
+                  >
+                    +{role}
+                  </button>
+                ))}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* 6. BARBER MANAGEMENT */}
       <div className={`${theme.bgCard} rounded-2xl p-5 sm:p-6 space-y-4 transition-all`}>
         <div className={`flex items-center justify-between pb-3 border-b ${borderSubtle}`}>
           <div className="flex items-center gap-2">
             <Users className="w-5 h-5 text-amber-600" />
             <h3 className={`text-base font-bold ${headingText}`}>
-              5. รายชื่อช่างตัดผมในร้าน ({barbers.length} คน)
+              6. รายชื่อช่างตัดผมในร้าน ({barbers.length} คน)
             </h3>
           </div>
           <button
@@ -1179,13 +1371,13 @@ export const TabSettings: React.FC = () => {
         </div>
       </div>
 
-      {/* 6. PRODUCT INVENTORY MANAGEMENT */}
+      {/* 7. PRODUCT INVENTORY MANAGEMENT */}
       <div className={`${theme.bgCard} rounded-2xl p-5 sm:p-6 space-y-4 transition-all`}>
         <div className={`flex items-center justify-between pb-3 border-b ${borderSubtle}`}>
           <div className="flex items-center gap-2">
             <ShoppingBag className="w-5 h-5 text-purple-600" />
             <h3 className={`text-base font-bold ${headingText}`}>
-              6. รายการสินค้าและราคา ({products.length} รายการ)
+              7. รายการสินค้าและราคา ({products.length} รายการ)
             </h3>
           </div>
           <button
@@ -1257,7 +1449,7 @@ export const TabSettings: React.FC = () => {
         </div>
       </div>
 
-      {/* 7. THEME CUSTOMIZATION STUDIO (WHITE EDITIONS) */}
+      {/* 8. THEME CUSTOMIZATION STUDIO (WHITE EDITIONS) */}
       <div className={`${theme.bgCard} rounded-2xl p-5 sm:p-6 space-y-5 transition-all`}>
         <div className={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b ${borderSubtle}`}>
           <div className="flex items-center gap-2.5">
@@ -1267,7 +1459,7 @@ export const TabSettings: React.FC = () => {
             <div>
               <div className="flex items-center gap-2">
                 <h3 className={`text-base font-bold ${headingText}`}>
-                  7. สตูดิโอธีมสีสว่าง & สไตล์โปรแกรม (White Edition Themes)
+                  8. สตูดิโอธีมสีสว่าง & สไตล์โปรแกรม (White Edition Themes)
                 </h3>
                 <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-100 text-emerald-800 border border-emerald-200">
                   8 สไตล์โทนขาว
@@ -1385,14 +1577,14 @@ export const TabSettings: React.FC = () => {
         </div>
       </div>
 
-      {/* 8. SETTINGS PIN CODE MANAGEMENT */}
+      {/* 9. SETTINGS PIN CODE MANAGEMENT */}
       <div className={`${theme.bgCard} rounded-2xl p-5 sm:p-6 space-y-4 transition-all`}>
         <div className={`flex items-center justify-between pb-3 border-b ${borderSubtle}`}>
           <div className="flex items-center gap-2">
             <Shield className="w-5 h-5 text-amber-600" />
             <div>
               <h3 className={`text-base font-bold ${headingText}`}>
-                8. ความปลอดภัย & รหัสผ่านหน้าตั้งค่า (Settings PIN Code)
+                9. ความปลอดภัย & รหัสผ่านหน้าตั้งค่า (Settings PIN Code)
               </h3>
               <p className={`text-xs ${mutedText}`}>
                 กำหนดรหัสผ่านสำหรับเข้าหน้าตั้งค่าร้าน เพื่อป้องกันไม่ให้บุคคลภายนอกหรือพนักงานแก้ไขข้อมูลร้านค้า
@@ -1475,7 +1667,7 @@ export const TabSettings: React.FC = () => {
         </form>
       </div>
 
-      {/* 9. SYSTEM RESET & FACTORY RESET */}
+      {/* 10. SYSTEM RESET & FACTORY RESET */}
       <div className="space-y-4">
         {/* Factory Reset (Wipe All Data) */}
         <div className={`p-5 sm:p-6 rounded-2xl border-2 transition-all flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 ${

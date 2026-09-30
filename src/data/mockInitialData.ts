@@ -424,6 +424,7 @@ export const CLEAN_SETTINGS: ShopSettings = {
   settingsPin: '1234',
   voucherPresetAmounts: [50, 100, 200, 300, 500],
   defaultOpeningFloat: 1000,
+  bookingRecorders: ['เจ้าของร้าน', 'แอดมินเพจ'],
 };
 
 export const INITIAL_SETTINGS: ShopSettings = {
@@ -444,6 +445,7 @@ export const INITIAL_SETTINGS: ShopSettings = {
   settingsPin: '1234',
   voucherPresetAmounts: [50, 100, 200, 300, 500],
   defaultOpeningFloat: 1000,
+  bookingRecorders: ['เจ้าของร้าน', 'แอดมินเพจ'],
 };
 
 // Generate realistic initial bills for 2026-08-18 and past couple days
@@ -685,6 +687,7 @@ export const INITIAL_QUEUES: QueueBooking[] = [
     customerName: 'คุณภัทรเดช',
     customerPhone: '081-443-8899',
     serviceType: 'ตัดผมคลาสสิก + เซ็ท',
+    bookedBy: 'เจ้าของร้าน',
     notes: 'ขอช่างเอกประจำ',
     status: 'in_progress',
     createdAt: Date.now() - 3600000,
@@ -700,6 +703,7 @@ export const INITIAL_QUEUES: QueueBooking[] = [
     customerName: 'คุณกิตติศักดิ์',
     customerPhone: '086-778-9900',
     serviceType: 'Fade Cut + กันหนวด',
+    bookedBy: 'แอดมินเพจ',
     notes: 'เตรียมผ้าเย็น',
     status: 'waiting',
     createdAt: Date.now() - 1800000,
@@ -715,6 +719,7 @@ export const INITIAL_QUEUES: QueueBooking[] = [
     customerName: 'คุณวรเมธ',
     customerPhone: '092-334-5566',
     serviceType: 'ดัดวอลลุ่มเกาหลี + ตัดแต่ง',
+    bookedBy: 'แอดมินเพจ',
     notes: 'จองล่วงหน้า 2 วัน',
     status: 'waiting',
     createdAt: Date.now() - 900000,
@@ -730,6 +735,7 @@ export const INITIAL_QUEUES: QueueBooking[] = [
     customerName: 'คุณอิทธิพล',
     customerPhone: '087-555-1234',
     serviceType: 'ตัดผม + สระไดร์',
+    bookedBy: 'เจ้าของร้าน',
     notes: 'ลูกค้า VIP',
     status: 'waiting',
     createdAt: Date.now() - 400000,
@@ -745,6 +751,7 @@ export const INITIAL_QUEUES: QueueBooking[] = [
     customerName: 'คุณศุภกร',
     customerPhone: '091-888-4321',
     serviceType: 'ตัดทรง Two-Block',
+    bookedBy: 'แอดมินเพจ',
     notes: 'ลูกค้าใหม่มาตามรีวิว',
     status: 'waiting',
     createdAt: Date.now() - 200000,
@@ -760,6 +767,7 @@ export const INITIAL_QUEUES: QueueBooking[] = [
     customerName: 'คุณธนภัทร',
     customerPhone: '089-999-1122',
     serviceType: 'Fade Cut + เซ็ตผม',
+    bookedBy: 'เจ้าของร้าน',
     notes: 'จองคิวล่วงหน้า',
     status: 'waiting',
     createdAt: Date.now() - 100000,

@@ -65,6 +65,7 @@ export const ModalEditQueue: React.FC<ModalEditQueueProps> = ({
   const [serviceType, setServiceType] = useState('บริการตัดผม/ทั่วไป');
   const [status, setStatus] = useState<QueueStatus>('waiting');
   const [notes, setNotes] = useState('');
+  const [bookedBy, setBookedBy] = useState('');
 
   const today = new Date();
   const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
@@ -81,8 +82,9 @@ export const ModalEditQueue: React.FC<ModalEditQueueProps> = ({
       setServiceType(queue.serviceType || 'บริการตัดผม/ทั่วไป');
       setStatus(queue.status || 'waiting');
       setNotes(queue.notes || '');
+      setBookedBy(queue.bookedBy || (settings.bookingRecorders && settings.bookingRecorders[0]) || 'เจ้าของร้าน');
     }
-  }, [queue, isOpen, barbers]);
+  }, [queue, isOpen, barbers, settings.bookingRecorders]);
 
   if (!isOpen || !queue) return null;
 
@@ -125,6 +127,7 @@ export const ModalEditQueue: React.FC<ModalEditQueueProps> = ({
       serviceType: serviceType.trim() || 'บริการตัดผม/ทั่วไป',
       status,
       notes: notes.trim(),
+      bookedBy: bookedBy.trim() || undefined,
     });
 
     sounds.playSuccess();
@@ -236,6 +239,50 @@ export const ModalEditQueue: React.FC<ModalEditQueueProps> = ({
                 </option>
               ))}
             </select>
+          </div>
+
+          {/* Booked By Selection (ผู้บันทึกคิวจอง) */}
+          <div>
+            <label className={`block text-xs font-semibold ${mutedText} mb-1 flex items-center gap-1`}>
+              <span>👤 ผู้บันทึกคิวจอง</span>
+            </label>
+            <select
+              value={bookedBy}
+              onChange={(e) => setBookedBy(e.target.value)}
+              className={inputClass}
+            >
+              {(settings.bookingRecorders || ['เจ้าของร้าน', 'แอดมินเพจ']).map((rec) => (
+                <option key={rec} value={rec}>
+                  👤 {rec}
+                </option>
+              ))}
+              {bookedBy && !(settings.bookingRecorders || ['เจ้าของร้าน', 'แอดมินเพจ']).includes(bookedBy) && (
+                <option value={bookedBy}>👤 {bookedBy}</option>
+              )}
+            </select>
+            {/* Quick chips */}
+            {(settings.bookingRecorders || ['เจ้าของร้าน', 'แอดมินเพจ']).length > 1 && (
+              <div className="flex flex-wrap gap-1.5 mt-1.5">
+                {(settings.bookingRecorders || ['เจ้าของร้าน', 'แอดมินเพจ']).map((rec) => (
+                  <button
+                    key={rec}
+                    type="button"
+                    onClick={() => setBookedBy(rec)}
+                    className={`px-2 py-0.5 rounded-md text-[11px] font-medium transition-all ${
+                      bookedBy === rec
+                        ? isDark
+                          ? 'bg-amber-500 text-zinc-950 font-bold'
+                          : 'bg-slate-900 text-white font-bold'
+                        : isDark
+                        ? 'bg-zinc-800 text-zinc-400 hover:text-zinc-200'
+                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    }`}
+                  >
+                    {rec}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Date & Time (Real-time Thai 24h) */}

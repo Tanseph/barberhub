@@ -412,6 +412,11 @@ export const TabPOS: React.FC = () => {
                     {pendingQueueToPos.startTime.replace(':', '.')}{pendingQueueToPos.endTime ? ` - ${pendingQueueToPos.endTime.replace(':', '.')}` : ''} น.
                   </span>
                 )}
+                {pendingQueueToPos.bookedBy && (
+                  <span className="ml-1.5 text-[11px] font-semibold text-purple-600 dark:text-purple-400 bg-purple-500/10 border border-purple-500/20 px-1.5 py-0.5 rounded">
+                    👤 ผู้บันทึก: {pendingQueueToPos.bookedBy}
+                  </span>
+                )}
               </p>
             </div>
           </div>

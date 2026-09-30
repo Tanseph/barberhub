@@ -188,6 +188,7 @@ export interface QueueBooking {
   customerPhone: string;
   serviceType: string;
   notes?: string;
+  bookedBy?: string; // ผู้บันทึกคิวจอง
   status: QueueStatus;
   isLeaveOrBlocked?: boolean;
   leaveReason?: string;
@@ -257,6 +258,7 @@ export interface ShopSettings {
   settingsPin?: string; // Default '1234'
   voucherPresetAmounts?: number[]; // มูลค่า Gift Voucher ที่กำหนดไว้ในร้าน เช่น [50, 100, 200, 300, 500]
   defaultOpeningFloat?: number; // เงินทอนเริ่มต้นเปิดเก๊ะ (บาท) เช่น 1000
+  bookingRecorders?: string[]; // รายชื่อผู้บันทึกคิวจอง เช่น ['เจ้าของร้าน', 'แอดมินเพจ']
 }
 
 export interface DenominationCount {

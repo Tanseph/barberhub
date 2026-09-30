@@ -460,6 +460,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           if (!parsed.voucherPresetAmounts || parsed.voucherPresetAmounts.length === 0) {
             parsed.voucherPresetAmounts = [50, 100, 200, 300, 500];
           }
+          if (!parsed.bookingRecorders || parsed.bookingRecorders.length === 0) {
+            parsed.bookingRecorders = ['เจ้าของร้าน', 'แอดมินเพจ'];
+          }
           return sanitizeShopSettings(parsed);
         }
       } catch (e) {
@@ -648,6 +651,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         const parsed = JSON.parse(savedSettings);
         if (!parsed.voucherPresetAmounts || parsed.voucherPresetAmounts.length === 0) {
           parsed.voucherPresetAmounts = [50, 100, 200, 300, 500];
+        }
+        if (!parsed.bookingRecorders || parsed.bookingRecorders.length === 0) {
+          parsed.bookingRecorders = ['เจ้าของร้าน', 'แอดมินเพจ'];
         }
         setSettings(parsed);
       } else {

@@ -379,9 +379,26 @@ export const TabQueue: React.FC = () => {
     settings,
     theme,
     openConfirm,
+    setActiveTab,
   } = useApp();
 
   const isDark = theme.isDark ?? false;
+
+  // Booking Recorders List from Settings
+  const bookingRecordersList = useMemo(() => {
+    return settings.bookingRecorders && settings.bookingRecorders.length > 0
+      ? settings.bookingRecorders
+      : ['เจ้าของร้าน', 'แอดมินเพจ'];
+  }, [settings.bookingRecorders]);
+
+  const [bookedBy, setBookedBy] = useState<string>(() => bookingRecordersList[0] || 'เจ้าของร้าน');
+  const [filterRecorder, setFilterRecorder] = useState<string>('all');
+
+  useEffect(() => {
+    if (bookingRecordersList.length > 0 && !bookingRecordersList.includes(bookedBy)) {
+      setBookedBy(bookingRecordersList[0]);
+    }
+  }, [bookingRecordersList, bookedBy]);
 
   // Real-time synchronization of queue statuses according to current time
   useEffect(() => {
@@ -499,6 +516,7 @@ export const TabQueue: React.FC = () => {
       customerName: customerName.trim(),
       customerPhone: customerPhone.trim() || '-',
       serviceType: 'บริการตัดผม/ทั่วไป',
+      bookedBy: bookedBy.trim() || undefined,
       status: 'waiting',
       isLeaveOrBlocked: false,
     });
@@ -545,20 +563,22 @@ export const TabQueue: React.FC = () => {
         const matchDate = filterDate === 'all' || q.date === filterDate;
         const matchBarber = filterBarber === 'all' || q.barberId === filterBarber;
         const matchStatus = filterStatus === 'all' || q.status === filterStatus;
+        const matchRecorder = filterRecorder === 'all' || q.bookedBy === filterRecorder;
         const matchSearch =
           !query ||
           q.customerName.toLowerCase().includes(query) ||
           (q.customerPhone && q.customerPhone.includes(query)) ||
           q.queueNumber.toLowerCase().includes(query) ||
-          q.barberName.toLowerCase().includes(query);
-        return matchDate && matchBarber && matchStatus && matchSearch && !q.isLeaveOrBlocked;
+          q.barberName.toLowerCase().includes(query) ||
+          (q.bookedBy && q.bookedBy.toLowerCase().includes(query));
+        return matchDate && matchBarber && matchStatus && matchRecorder && matchSearch && !q.isLeaveOrBlocked;
       })
       .sort((a, b) => {
         const dateCmp = (a.date || '').localeCompare(b.date || '');
         if (dateCmp !== 0) return dateCmp;
         return (a.startTime || '').localeCompare(b.startTime || '');
       });
-  }, [queues, subTab, filterDate, filterBarber, filterStatus, searchQuery]);
+  }, [queues, subTab, filterDate, filterBarber, filterStatus, filterRecorder, searchQuery]);
 
   // Statistics for selected date
   const queueStats = useMemo(() => {
@@ -831,9 +851,22 @@ export const TabQueue: React.FC = () => {
             isDark ? 'border-zinc-800/80' : 'border-slate-100'
           }`}
         >
-          {/* Service & Notes */}
-          <div className="flex items-center gap-2 text-[11px] min-w-0 flex-1">
+          {/* Service & Notes & Booked By */}
+          <div className="flex items-center gap-2 text-[11px] min-w-0 flex-1 flex-wrap">
             <span className={`${mutedText} truncate`}>{q.serviceType}</span>
+            {q.bookedBy && (
+              <span
+                className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium border shrink-0 ${
+                  isDark
+                    ? 'bg-purple-950/40 text-purple-300 border-purple-800/60'
+                    : 'bg-purple-50 text-purple-700 border-purple-200'
+                }`}
+                title={`ผู้บันทึกคิวจอง: ${q.bookedBy}`}
+              >
+                <span>👤</span>
+                <span>ผู้บันทึก: {q.bookedBy}</span>
+              </span>
+            )}
             {q.notes && (
               <span
                 className={`italic truncate max-w-[170px] px-1.5 py-0.5 rounded ${
@@ -1082,6 +1115,66 @@ export const TabQueue: React.FC = () => {
                     placeholder="กรุณาระบุเบอร์โทรศัพท์ลูกค้า (ไม่บังคับ)"
                     className={`${inputClass} font-mono`}
                   />
+                </div>
+
+                {/* Booked By (ผู้บันทึกคิวจอง) */}
+                <div className="pt-2 border-t border-dashed border-slate-200 dark:border-zinc-800">
+                  <div className="flex items-center justify-between mb-1">
+                    <label className={`block text-xs font-semibold ${mutedText} flex items-center gap-1`}>
+                      <span>👤 ผู้บันทึกคิวจอง</span>
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        sounds.playClick();
+                        setActiveTab('settings');
+                      }}
+                      className="text-[10px] text-amber-500 hover:text-amber-400 font-semibold underline underline-offset-2 transition-colors cursor-pointer"
+                      title="ไปที่หน้าตั้งค่าเพื่อเพิ่ม/แก้ไขรายชื่อผู้บันทึกคิวจอง"
+                    >
+                      ⚙️ ตั้งค่ารายชื่อ
+                    </button>
+                  </div>
+                  <select
+                    value={bookedBy}
+                    onChange={(e) => setBookedBy(e.target.value)}
+                    className={`${inputClass} font-semibold`}
+                  >
+                    {bookingRecordersList.map((rec) => (
+                      <option key={rec} value={rec}>
+                        👤 {rec}
+                      </option>
+                    ))}
+                    {!bookingRecordersList.includes(bookedBy) && bookedBy && (
+                      <option value={bookedBy}>👤 {bookedBy}</option>
+                    )}
+                  </select>
+                  {/* Quick chips of recorders */}
+                  {bookingRecordersList.length > 1 && (
+                    <div className="flex flex-wrap gap-1 mt-1.5">
+                      {bookingRecordersList.map((rec) => (
+                        <button
+                          key={rec}
+                          type="button"
+                          onClick={() => {
+                            sounds.playClick();
+                            setBookedBy(rec);
+                          }}
+                          className={`px-2 py-0.5 rounded-md text-[11px] font-medium transition-all ${
+                            bookedBy === rec
+                              ? isDark
+                                ? 'bg-amber-500 text-zinc-950 font-bold shadow-xs'
+                                : 'bg-slate-900 text-white font-bold shadow-xs'
+                              : isDark
+                              ? 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700'
+                              : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                          }`}
+                        >
+                          {rec}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -1359,6 +1452,22 @@ export const TabQueue: React.FC = () => {
                     <option value="in_progress">✂️ กำลังตัด</option>
                     <option value="completed">✅ เสร็จแล้ว</option>
                     <option value="cancelled">❌ ยกเลิก</option>
+                  </select>
+
+                  <select
+                    value={filterRecorder}
+                    onChange={(e) => setFilterRecorder(e.target.value)}
+                    className={`px-2 py-1.5 rounded-lg border text-xs focus:outline-none ${
+                      isDark ? 'bg-zinc-950 border-zinc-700 text-zinc-200' : 'bg-slate-50 border-slate-200 text-slate-800'
+                    }`}
+                    title="กรองตามผู้บันทึกคิวจอง"
+                  >
+                    <option value="all">ผู้บันทึกทั้งหมด</option>
+                    {bookingRecordersList.map((rec) => (
+                      <option key={rec} value={rec}>
+                        👤 {rec}
+                      </option>
+                    ))}
                   </select>
 
                   {/* Search input */}
