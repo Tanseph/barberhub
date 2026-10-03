@@ -521,15 +521,6 @@ export const TabPOS: React.FC = () => {
                     placeholder="ระบุชื่อลูกค้า (หรือเว้นว่างเป็น Walk-in)"
                     className={`w-full px-3 py-1.5 bg-transparent text-xs sm:text-sm ${headingText} focus:outline-none`}
                   />
-                  {customerName && (
-                    <button
-                      type="button"
-                      onClick={() => setCustomerName('')}
-                      className="px-2.5 text-xs text-zinc-400 hover:text-zinc-200"
-                    >
-                      ล้าง
-                    </button>
-                  )}
                 </div>
               </div>
             </div>

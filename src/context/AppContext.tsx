@@ -1175,15 +1175,24 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       },
       onCashCounts: (cloudCash) => {
         const keys = getTenantStorageKeys(currentShopId);
+        const deletedIds = getDeletedIds(currentShopId);
         const localCash = getLocalTenantData<CashDrawerRecord>(keys.CASH_DRAWER);
-        const cloudIdSet = new Set((cloudCash || []).map((c) => c.id));
 
-        const unsynced = localCash.filter((c) => !cloudIdSet.has(c.id));
+        for (const cc of cloudCash || []) {
+          if (deletedIds.has(cc.id)) {
+            deleteDocumentFromCloud(currentShopId, 'cashCounts', cc.id).catch(console.error);
+          }
+        }
+
+        const validCloud = (cloudCash || []).filter((c) => !deletedIds.has(c.id));
+        const cloudIdSet = new Set(validCloud.map((c) => c.id));
+
+        const unsynced = localCash.filter((c) => !cloudIdSet.has(c.id) && !deletedIds.has(c.id));
         for (const u of unsynced) {
           saveDocumentToCloud(currentShopId, 'cashCounts', u).catch(console.error);
         }
 
-        const combined = [...(cloudCash || []), ...unsynced];
+        const combined = [...validCloud, ...unsynced];
         combined.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
         setCashDrawerRecords(combined);
         localStorage.setItem(keys.CASH_DRAWER, JSON.stringify(combined));
@@ -1659,6 +1668,30 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   const deleteSaleBill = (id: string) => {
     const target = bills.find((b) => b.id === id);
+
+    // Restore product stock if the deleted bill had products
+    if (target?.products && target.products.length > 0) {
+      setProducts((prev) => {
+        const next = prev.map((p) => {
+          const soldItem = target.products?.find((sp) => sp.productId === p.id);
+          if (soldItem) {
+            const restoredStock = p.stock + soldItem.quantity;
+            const updatedProduct = { ...p, stock: restoredStock };
+            if (currentShopId) {
+              saveDocumentToCloud(currentShopId, 'products', updatedProduct).catch(console.error);
+            }
+            return updatedProduct;
+          }
+          return p;
+        });
+        if (currentShopId) {
+          const keys = getTenantStorageKeys(currentShopId);
+          localStorage.setItem(keys.PRODUCTS, JSON.stringify(next));
+        }
+        return next;
+      });
+    }
+
     setBills((prev) => {
       let next = prev.filter((b) => b.id !== id);
 
@@ -2171,6 +2204,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setCashDrawerRecords((prev) => {
       const next = prev.filter((r) => r.id !== id);
       if (currentShopId) {
+        markIdDeleted(currentShopId, id);
         const keys = getTenantStorageKeys(currentShopId);
         localStorage.setItem(keys.CASH_DRAWER, JSON.stringify(next));
         deleteDocumentFromCloud(currentShopId, 'cashCounts', id).catch(console.error);

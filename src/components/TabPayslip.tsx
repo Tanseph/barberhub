@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { Barber, BarberSalaryType, SaleBill, ShopExpense } from '../types';
 import { getBillingCycleInfo, BillingCycleInfo } from '../utils/billingCycle';
@@ -76,6 +76,7 @@ export const TabPayslip: React.FC = () => {
     theme,
     updateBarber,
     showToast,
+    currentShopId,
   } = useApp();
 
   const isDark = theme.isDark ?? true;
@@ -100,15 +101,28 @@ export const TabPayslip: React.FC = () => {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editingBarber, setEditingBarber] = useState<Barber | null>(null);
 
+  // Tenant-safe storage key for payslip adjustments
+  const adjStorageKey = `barber_payslip_adj_${currentShopId || settings.shopName || 'default'}`;
+
   // Adjustments storage in localStorage per (period + barberId)
   const [adjustments, setAdjustments] = useState<Record<string, BarberAdjustment>>(() => {
     try {
-      const saved = localStorage.getItem(`barber_payslip_adj_${settings.shopName}`);
+      const saved = localStorage.getItem(adjStorageKey);
       return saved ? JSON.parse(saved) : {};
     } catch {
       return {};
     }
   });
+
+  // Re-sync adjustments if shop changes
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(adjStorageKey);
+      setAdjustments(saved ? JSON.parse(saved) : {});
+    } catch {
+      setAdjustments({});
+    }
+  }, [adjStorageKey]);
 
   const getAdjustmentKey = (barberId: string, monthStr: string) => `${monthStr}_${barberId}`;
 
@@ -153,7 +167,7 @@ export const TabPayslip: React.FC = () => {
     const next = { ...adjustments, [key]: data };
     setAdjustments(next);
     try {
-      localStorage.setItem(`barber_payslip_adj_${settings.shopName}`, JSON.stringify(next));
+      localStorage.setItem(adjStorageKey, JSON.stringify(next));
     } catch {
       // ignore
     }
