@@ -2,7 +2,6 @@ import React, { useState, useMemo, useEffect } from 'react';
 import confetti from 'canvas-confetti';
 import {
   Coins,
-  Receipt,
   RotateCcw,
   CheckCircle2,
   Copy,
@@ -10,20 +9,9 @@ import {
   Plus,
   Minus,
   Banknote,
-  ChevronDown,
-  ChevronUp,
-  History,
   TrendingUp,
   TrendingDown,
-  Trash2,
-  Check,
-  LayoutDashboard,
-  Wallet,
-  ArrowRight,
-  FileSpreadsheet,
   Calculator,
-  Sparkles,
-  Layers,
   RefreshCw,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
@@ -32,7 +20,6 @@ import { sounds } from '../utils/sound';
 import {
   getTodayDateStr,
   getYesterdayDateStr,
-  formatThaiDateFull,
   formatThaiDateWithWeekday,
 } from './RealtimeDatePicker';
 
@@ -40,6 +27,7 @@ interface DenomRow {
   key: keyof DenominationCount;
   value: number;
   label: string;
+  shortLabel: string;
   unit: string;
   type: 'note' | 'coin';
   badgeBg: string;
@@ -47,12 +35,13 @@ interface DenomRow {
   textColor: string;
 }
 
-// 9 Denominations arranged vertically straight down
+// 9 Denominations arranged vertically
 const DENOM_LIST: DenomRow[] = [
   {
     key: 'b1000',
     value: 1000,
     label: 'ธนบัตร 1,000 บาท',
+    shortLabel: 'แบงก์ 1,000',
     unit: 'ใบ',
     type: 'note',
     badgeBg: 'bg-amber-500/10 border-amber-500/30',
@@ -63,6 +52,7 @@ const DENOM_LIST: DenomRow[] = [
     key: 'b500',
     value: 500,
     label: 'ธนบัตร 500 บาท',
+    shortLabel: 'แบงก์ 500',
     unit: 'ใบ',
     type: 'note',
     badgeBg: 'bg-purple-500/10 border-purple-500/30',
@@ -73,6 +63,7 @@ const DENOM_LIST: DenomRow[] = [
     key: 'b100',
     value: 100,
     label: 'ธนบัตร 100 บาท',
+    shortLabel: 'แบงก์ 100',
     unit: 'ใบ',
     type: 'note',
     badgeBg: 'bg-rose-500/10 border-rose-500/30',
@@ -83,6 +74,7 @@ const DENOM_LIST: DenomRow[] = [
     key: 'b50',
     value: 50,
     label: 'ธนบัตร 50 บาท',
+    shortLabel: 'แบงก์ 50',
     unit: 'ใบ',
     type: 'note',
     badgeBg: 'bg-sky-500/10 border-sky-500/30',
@@ -93,6 +85,7 @@ const DENOM_LIST: DenomRow[] = [
     key: 'b20',
     value: 20,
     label: 'ธนบัตร 20 บาท',
+    shortLabel: 'แบงก์ 20',
     unit: 'ใบ',
     type: 'note',
     badgeBg: 'bg-emerald-500/10 border-emerald-500/30',
@@ -103,6 +96,7 @@ const DENOM_LIST: DenomRow[] = [
     key: 'c10',
     value: 10,
     label: 'เหรียญ 10 บาท',
+    shortLabel: 'เหรียญ 10',
     unit: 'เหรียญ',
     type: 'coin',
     badgeBg: 'bg-amber-600/10 border-amber-600/30',
@@ -113,6 +107,7 @@ const DENOM_LIST: DenomRow[] = [
     key: 'c5',
     value: 5,
     label: 'เหรียญ 5 บาท',
+    shortLabel: 'เหรียญ 5',
     unit: 'เหรียญ',
     type: 'coin',
     badgeBg: 'bg-zinc-500/10 border-zinc-500/30',
@@ -123,6 +118,7 @@ const DENOM_LIST: DenomRow[] = [
     key: 'c2',
     value: 2,
     label: 'เหรียญ 2 บาท',
+    shortLabel: 'เหรียญ 2',
     unit: 'เหรียญ',
     type: 'coin',
     badgeBg: 'bg-yellow-600/10 border-yellow-600/30',
@@ -133,6 +129,7 @@ const DENOM_LIST: DenomRow[] = [
     key: 'c1',
     value: 1,
     label: 'เหรียญ 1 บาท',
+    shortLabel: 'เหรียญ 1',
     unit: 'เหรียญ',
     type: 'coin',
     badgeBg: 'bg-slate-500/10 border-slate-500/30',
@@ -161,12 +158,7 @@ export const TabCashDrawer: React.FC = () => {
     theme,
     cashDrawerRecords,
     addCashDrawerRecord,
-    deleteCashDrawerRecord,
-    getOpeningFloatForDate,
-    setOpeningFloatForDate,
     showToast,
-    openReceiptModal,
-    setActiveTab,
     currentShopId,
   } = useApp();
 
@@ -176,7 +168,7 @@ export const TabCashDrawer: React.FC = () => {
 
   const draftStorageKey = `barber_drawer_draft_${currentShopId || 'default'}_${selectedDate}`;
 
-  // Denomination counts state (เรียงตรงยาวลงมา)
+  // Denomination counts state
   const [counts, setCounts] = useState<DenominationCount>(() => {
     try {
       const saved = localStorage.getItem(`barber_drawer_draft_${currentShopId || 'default'}_${todayStr}`);
@@ -187,19 +179,6 @@ export const TabCashDrawer: React.FC = () => {
     } catch {}
     return INITIAL_COUNTS;
   });
-
-  // Manual total override option (for those who want to type total directly)
-  const [useManualTotal, setUseManualTotal] = useState(false);
-  const [manualTotalInput, setManualTotalInput] = useState('');
-
-  // Opening float state (เอาออกมาข้างนอก ให้กรอกได้ตรงๆ ทันที ไม่ต้องมีไล่ยอดอัตโนมัติ)
-  const openingFloat = getOpeningFloatForDate(selectedDate);
-  const [floatInput, setFloatInput] = useState<string>(() => String(openingFloat));
-
-  // Sync floatInput when selectedDate changes
-  useEffect(() => {
-    setFloatInput(String(getOpeningFloatForDate(selectedDate)));
-  }, [selectedDate, getOpeningFloatForDate]);
 
   // Load draft or latest record when selectedDate or currentShopId changes
   useEffect(() => {
@@ -221,7 +200,7 @@ export const TabCashDrawer: React.FC = () => {
     } catch {
       setCounts(INITIAL_COUNTS);
     }
-  }, [selectedDate, currentShopId, draftStorageKey]);
+  }, [selectedDate, currentShopId, draftStorageKey, cashDrawerRecords]);
 
   const updateCountsAndDraft = (newCounts: DenominationCount) => {
     setCounts(newCounts);
@@ -230,31 +209,11 @@ export const TabCashDrawer: React.FC = () => {
     } catch {}
   };
 
-  const handleFloatChange = (valStr: string) => {
-    setFloatInput(valStr);
-    const cleanStr = valStr.replace(/,/g, '');
-    const num = parseFloat(cleanStr);
-    setOpeningFloatForDate(selectedDate, isNaN(num) || num < 0 ? 0 : num);
-  };
-
-  const handleApplyPresetFloat = (amount: number) => {
-    sounds.playClick();
-    setFloatInput(String(amount));
-    setOpeningFloatForDate(selectedDate, amount);
-  };
-
-  // Collapsible sections
-  const [showBreakdownDetails, setShowBreakdownDetails] = useState(false);
-  const [showHistory, setShowHistory] = useState(false);
-  const [operatorNote, setOperatorNote] = useState('');
-  const [countedBy, setCountedBy] = useState<string>(() => settings.bookingRecorders?.[0] || 'เจ้าของร้าน');
-
   const isDark = theme.isDark ?? true;
   const cardBg = isDark ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-slate-200';
   const headingText = isDark ? 'text-zinc-100' : 'text-slate-900';
   const mutedText = isDark ? 'text-zinc-400' : 'text-slate-500';
 
-  // 1. Calculations from data
   // Cash Bills for selected date
   const dayBills = useMemo(() => {
     return bills.filter((b) => b.dateStr === selectedDate);
@@ -268,6 +227,7 @@ export const TabCashDrawer: React.FC = () => {
     });
   }, [dayBills]);
 
+  // Cash sales of that day
   const cashSalesTotal = useMemo(() => {
     return cashBills.reduce((sum, b) => {
       if (b.paymentMethod === 'cash') {
@@ -280,7 +240,7 @@ export const TabCashDrawer: React.FC = () => {
     }, 0);
   }, [cashBills]);
 
-  // Cash Expenses for selected date
+  // Cash Expenses for selected date (if any)
   const dayExpenses = useMemo(() => {
     return expenses.filter((e) => e.dateStr === selectedDate);
   }, [expenses, selectedDate]);
@@ -293,28 +253,11 @@ export const TabCashDrawer: React.FC = () => {
     return cashExpenses.reduce((sum, e) => sum + (e.amount || 0), 0);
   }, [cashExpenses]);
 
-  // Expected cash in drawer according to system
-  const expectedTotal = Math.max(0, openingFloat + cashSalesTotal - cashExpensesTotal);
+  // Expected cash from today's cash flow: Cash Sales - Cash Expenses
+  const expectedTotal = Math.max(0, cashSalesTotal - cashExpensesTotal);
 
-  // Full Day Metrics (เชื่อมกับแดชบอร์ดและหน้ารายจ่าย เพื่อการทำบัญชีที่ถูกต้อง)
-  const totalDaySales = useMemo(() => {
-    return dayBills.reduce((sum, b) => sum + b.grossTotal, 0);
-  }, [dayBills]);
-
-  const transferSalesTotal = useMemo(() => {
-    return dayBills.reduce((sum, b) => sum + (b.transferAmount || 0), 0);
-  }, [dayBills]);
-
-  const totalDayExpenses = useMemo(() => {
-    return dayExpenses.reduce((sum, e) => sum + (e.amount || 0), 0);
-  }, [dayExpenses]);
-
-  const transferExpensesTotal = useMemo(() => {
-    return dayExpenses.filter((e) => e.paymentMethod === 'transfer').reduce((sum, e) => sum + (e.amount || 0), 0);
-  }, [dayExpenses]);
-
-  // Sum of denominations
-  const breakdownTotal = useMemo(() => {
+  // Sum of denominations currently in drawer (คำนวณออกมาเลยจากที่ใส่)
+  const actualCounted = useMemo(() => {
     return DENOM_LIST.reduce((sum, item) => sum + (counts[item.key] || 0) * item.value, 0);
   }, [counts]);
 
@@ -323,7 +266,7 @@ export const TabCashDrawer: React.FC = () => {
     return DENOM_LIST.reduce((sum, item) => sum + (counts[item.key] || 0), 0);
   }, [counts]);
 
-  // Banknotes breakdown
+  // Notes breakdown
   const notesBreakdown = useMemo(() => {
     return DENOM_LIST.filter((d) => d.type === 'note').map((d) => {
       const qty = counts[d.key] || 0;
@@ -363,16 +306,7 @@ export const TabCashDrawer: React.FC = () => {
     return coinsBreakdown.reduce((sum, item) => sum + item.total, 0);
   }, [coinsBreakdown]);
 
-  // Actual counted amount (breakdown or manual override)
-  const actualCounted = useMemo(() => {
-    if (useManualTotal) {
-      const val = parseFloat(manualTotalInput.replace(/,/g, ''));
-      return isNaN(val) || val < 0 ? 0 : val;
-    }
-    return breakdownTotal;
-  }, [useManualTotal, manualTotalInput, breakdownTotal]);
-
-  const hasCounted = useManualTotal ? manualTotalInput.trim() !== '' : breakdownTotal > 0;
+  const hasCounted = actualCounted > 0 || totalItemsCount > 0;
   const difference = hasCounted ? actualCounted - expectedTotal : 0;
   const isBalanced = hasCounted && difference === 0;
   const isShort = hasCounted && difference < 0;
@@ -383,10 +317,9 @@ export const TabCashDrawer: React.FC = () => {
     return cashDrawerRecords.filter((r) => r.dateStr === selectedDate);
   }, [cashDrawerRecords, selectedDate]);
 
-  // Denomination counter updates
+  // Counter updates
   const handleUpdateQty = (key: keyof DenominationCount, delta: number) => {
     sounds.playCash();
-    if (useManualTotal) setUseManualTotal(false);
     const updated = {
       ...counts,
       [key]: Math.max(0, (counts[key] || 0) + delta),
@@ -396,7 +329,6 @@ export const TabCashDrawer: React.FC = () => {
 
   const handleQuickAdd = (key: keyof DenominationCount, addQty: number) => {
     sounds.playCash();
-    if (useManualTotal) setUseManualTotal(false);
     const updated = {
       ...counts,
       [key]: (counts[key] || 0) + addQty,
@@ -405,7 +337,6 @@ export const TabCashDrawer: React.FC = () => {
   };
 
   const handleSetQty = (key: keyof DenominationCount, val: string) => {
-    if (useManualTotal) setUseManualTotal(false);
     const num = parseInt(val, 10);
     const updated = {
       ...counts,
@@ -417,8 +348,6 @@ export const TabCashDrawer: React.FC = () => {
   const handleClearAll = () => {
     sounds.playDelete();
     updateCountsAndDraft(INITIAL_COUNTS);
-    setManualTotalInput('');
-    setUseManualTotal(false);
     showToast('ล้างการนับแล้ว', 'รีเซ็ตจำนวนธนบัตรและเหรียญทั้งหมดเป็น 0', 'info', '🔄');
   };
 
@@ -443,15 +372,14 @@ export const TabCashDrawer: React.FC = () => {
 
     addCashDrawerRecord({
       dateStr: selectedDate,
-      openingFloat,
+      openingFloat: 0,
       cashSales: cashSalesTotal,
       cashExpenses: cashExpensesTotal,
       expectedTotal,
       actualCounted,
       difference,
       denominations: counts,
-      countedBy: countedBy.trim() || 'เจ้าของร้าน',
-      notes: operatorNote.trim() || undefined,
+      countedBy: settings.bookingRecorders?.[0] || 'เจ้าของร้าน',
       status: isBalanced ? 'balanced' : isSurplus ? 'surplus' : 'short',
     });
 
@@ -475,24 +403,21 @@ export const TabCashDrawer: React.FC = () => {
       : `📉 เงินขาด -฿${Math.abs(difference).toLocaleString()}`;
 
     const noteLines = notesBreakdown.filter((d) => d.qty > 0)
-      .map((d) => `  • ${d.label}: ${d.qty} ใบ (= ฿${d.total.toLocaleString()})`)
+      .map((d) => `  • ${d.shortLabel}: ${d.qty} ใบ (= ฿${d.total.toLocaleString()})`)
       .join('\n');
     const coinLines = coinsBreakdown.filter((d) => d.qty > 0)
-      .map((d) => `  • ${d.label}: ${d.qty} เหรียญ (= ฿${d.total.toLocaleString()})`)
+      .map((d) => `  • ${d.shortLabel}: ${d.qty} เหรียญ (= ฿${d.total.toLocaleString()})`)
       .join('\n');
 
     const text = `💈 [สรุปเงินสดในเก๊ะ] ${settings.shopName || 'BarberPOS'}
 📅 วันที่: ${thaiDate}
 ━━━━━━━━━━━━━━━━━━━
-💵 เงินทอนเปิดเก๊ะ: ฿${openingFloat.toLocaleString()}
-🟢 ขายสดที่เข้ามาวันนี้ (${cashBills.length} บิล): +฿${cashSalesTotal.toLocaleString()}
-🔴 จ่ายสดที่หยิบออก (${cashExpenses.length} รายการ): -฿${cashExpensesTotal.toLocaleString()}
+🟢 เงินสดรับจากยอดขายวันนี้ (${cashBills.length} บิล): ฿${cashSalesTotal.toLocaleString()}${cashExpensesTotal > 0 ? `\n🔴 รายจ่ายสดที่หยิบออก: -฿${cashExpensesTotal.toLocaleString()}` : ''}
+📌 ยอดเงินสดในวันนั้นที่ต้องมี: ฿${expectedTotal.toLocaleString()}
+🪙 ยอดเงินในเก๊ะตอนนี้: ฿${actualCounted.toLocaleString()}
+📊 ผลลัพธ์: ${diffStatus}
 ━━━━━━━━━━━━━━━━━━━
-📌 ยอดตามระบบที่ต้องมี: ฿${expectedTotal.toLocaleString()}
-🪙 ยอดที่นับได้ในเก๊ะ ณ ปัจจุบัน: ฿${actualCounted.toLocaleString()}
-📊 เงินที่เข้ามาวันนี้: ${diffStatus}
-━━━━━━━━━━━━━━━━━━━
-📑 จำนวนเงินในเก๊ะปัจจุบัน:
+📑 จำนวนเงินในเก๊ะ ณ ปัจจุบัน:
 • ธนบัตรรวม ${totalNotesQty} ใบ: ฿${totalNotesAmount.toLocaleString()}
 ${noteLines || '  (ไม่มีธนบัตร)'}
 • เหรียญรวม ${totalCoinsQty} เหรียญ: ฿${totalCoinsAmount.toLocaleString()}
@@ -507,23 +432,23 @@ ${coinLines || '  (ไม่มีเหรียญ)'}
 
   return (
     <div className="max-w-2xl mx-auto px-3 sm:px-4 py-4 space-y-3.5">
-      {/* 1. TOP HEADER & DATE SELECTOR */}
+      {/* 1. DATE SELECTOR */}
       <div className={`p-3.5 sm:p-4 rounded-2xl border ${cardBg} flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs`}>
         <div className="flex items-center gap-2.5">
           <div className="w-9 h-9 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-500 flex items-center justify-center font-bold shrink-0">
             <Coins className="w-5 h-5" />
           </div>
           <div>
-            <h1 className={`text-base sm:text-lg font-bold ${headingText} flex items-center gap-1.5`}>
+            <h1 className={`text-base sm:text-lg font-bold ${headingText}`}>
               นับเงินสดในเก๊ะ
             </h1>
             <p className={`text-[11px] ${mutedText}`}>
-              นับธนบัตรและเหรียญทีละรายการ เรียงแนวตรงยาวลงมา
+              ใส่จำนวน แบงค์ และ เหรียญ เพื่อคำนวณกับยอดเงินสดในวันนั้น
             </p>
           </div>
         </div>
 
-        {/* Date Selector */}
+        {/* Date Switcher */}
         <div className="flex items-center gap-1.5 self-start sm:self-auto">
           <button
             type="button"
@@ -569,317 +494,42 @@ ${coinLines || '  (ไม่มีเหรียญ)'}
         </div>
       </div>
 
-      {/* ACCOUNTING & DATA CONNECTIONS BAR (เชื่อมโยงข้อมูลแดชบอร์ดและรายจ่าย เพื่อทำบัญชีให้ถูกต้อง) */}
-      <div className={`p-3 rounded-2xl border ${cardBg} shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5`}>
-        <div className="flex items-center gap-2 flex-wrap text-xs">
-          <span className="text-[11px] font-bold text-zinc-400">เชื่อมต่อทำบัญชี:</span>
-          <span className="font-semibold px-2 py-0.5 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
-            ขายรวมวันนี้: ฿{totalDaySales.toLocaleString()}
-          </span>
-          <span className="font-semibold px-2 py-0.5 rounded-lg bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20">
-            รายจ่ายรวม: ฿{totalDayExpenses.toLocaleString()}
-          </span>
-        </div>
-
-        <div className="flex items-center gap-1.5 w-full sm:w-auto justify-end">
-          <button
-            type="button"
-            onClick={() => {
-              sounds.playClick();
-              setActiveTab('dashboard');
-            }}
-            className="flex-1 sm:flex-initial px-3 py-1.5 rounded-xl text-xs font-bold bg-sky-500/10 hover:bg-sky-500/20 text-sky-600 dark:text-sky-400 border border-sky-500/20 flex items-center justify-center gap-1.5 transition-all shadow-2xs"
-            title="ดูสรุปยอดขาย กำไร และรายงานงบบัญชีในแดชบอร์ด"
-          >
-            <LayoutDashboard className="w-3.5 h-3.5" />
-            <span>ไปที่แดชบอร์ด</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              sounds.playClick();
-              setActiveTab('expenses');
-            }}
-            className="flex-1 sm:flex-initial px-3 py-1.5 rounded-xl text-xs font-bold bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 border border-rose-500/20 flex items-center justify-center gap-1.5 transition-all shadow-2xs"
-            title="ไปบันทึกรายจ่ายเงินสดที่หยิบออกจากเก๊ะ"
-          >
-            <Wallet className="w-3.5 h-3.5" />
-            <span>บันทึกรายจ่าย</span>
-          </button>
-        </div>
-      </div>
-
-      {/* 2. OPENING FLOAT INPUT CARD (กรอกเงินทอนในเก๊ะเริ่มต้นวัน เอาออกมาข้างนอก ไม่ต้องมีไล่ยอดอัตโนมัติ) */}
+      {/* 2. SUMMARY OF CURRENT CASH IN DRAWER & CALCULATION (คำนวณกับเงินสดในวันนั้น: รู้ว่าตอนนี้มีเงินในเก๊ะเท่าไหร่ ขาดหรือเกิน) */}
       <div className={`p-4 rounded-2xl border ${cardBg} shadow-xs space-y-3`}>
-        <div className="flex items-start sm:items-center justify-between gap-2 flex-col sm:flex-row">
-          <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-500 flex items-center justify-center font-bold shrink-0">
-              <Coins className="w-5 h-5" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h2 className={`text-sm sm:text-base font-bold ${headingText}`}>
-                  เงินทอนในเก๊ะเริ่มต้นวัน
-                </h2>
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-500 border border-amber-500/20">
-                  {selectedDate === todayStr ? 'ประจำวันนี้' : formatThaiDateFull(selectedDate)}
-                </span>
-              </div>
-              <p className={`text-[11px] ${mutedText}`}>
-                กรอกเงินทอนที่ใส่ไว้ในเก๊ะตอนเริ่มวัน (กรอกยอดเอง ไม่ไล่ยอดอัตโนมัติ)
-              </p>
-            </div>
-          </div>
-
-          {/* Quick preset buttons */}
-          <div className="flex items-center gap-1.5 flex-wrap self-start sm:self-auto">
-            <span className="text-[11px] text-zinc-400 mr-0.5">ยอดด่วน:</span>
-            {[0, 500, 1000, 1500, 2000].map((preset) => (
-              <button
-                key={preset}
-                type="button"
-                onClick={() => handleApplyPresetFloat(preset)}
-                className={`px-2.5 py-1 rounded-lg text-xs font-mono font-bold transition-all ${
-                  openingFloat === preset
-                    ? 'bg-amber-500 text-zinc-950 shadow-xs'
-                    : isDark
-                    ? 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700 border border-zinc-700/80'
-                    : 'bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-200'
-                }`}
-              >
-                ฿{preset.toLocaleString()}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Input field */}
-        <div className="flex items-center gap-2.5">
-          <div className="relative flex-1">
-            <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-base font-black font-mono text-amber-500">
-              ฿
-            </span>
-            <input
-              type="number"
-              min="0"
-              step="1"
-              value={floatInput}
-              onChange={(e) => handleFloatChange(e.target.value)}
-              placeholder="0"
-              className={`w-full pl-8 pr-12 py-2.5 rounded-xl font-mono text-lg font-black border transition-all ${
-                isDark
-                  ? 'bg-zinc-950 border-zinc-700 text-amber-400 focus:border-amber-500'
-                  : 'bg-slate-50 border-slate-300 text-amber-600 focus:border-amber-500'
-              } focus:outline-none focus:ring-2 focus:ring-amber-500/20`}
-            />
-            <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-zinc-400">
-              บาท
-            </span>
-          </div>
-
-          {openingFloat > 0 && (
-            <button
-              type="button"
-              onClick={() => handleApplyPresetFloat(0)}
-              className={`px-3 py-2.5 rounded-xl border text-xs font-medium transition-all ${
-                isDark
-                  ? 'border-zinc-700 text-zinc-400 hover:text-rose-400 hover:bg-rose-500/10'
-                  : 'border-slate-300 text-slate-500 hover:text-rose-600 hover:bg-rose-50'
-              }`}
-              title="ตั้งเงินทอนเป็น 0"
-            >
-              รีเซ็ตเป็น 0
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* 3. แถบสรุปจำนวนเงินในเก๊ะ ณ ปัจจุบัน (CURRENT CASH IN DRAWER BREAKDOWN) */}
-      <div className={`p-4 rounded-2xl border ${cardBg} shadow-xs space-y-3.5`}>
-        <div className="flex items-center justify-between pb-2 border-b border-zinc-200 dark:border-zinc-800/80">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-500 flex items-center justify-center font-bold shrink-0">
-              <Layers className="w-4 h-4" />
-            </div>
-            <div>
-              <h2 className={`text-sm sm:text-base font-bold ${headingText} flex items-center gap-1.5`}>
-                <span>จำนวนเงินในเก๊ะ ณ ปัจจุบัน</span>
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-500 border border-amber-500/20">
-                  Real-time Drawer Cash
-                </span>
-              </h2>
-              <p className={`text-[11px] ${mutedText}`}>
-                แสดงรายการธนบัตรและเหรียญที่ตรวจนับได้ในเก๊ะ ณ ตอนนี้ ว่ามีแบงค์และเหรียญอะไรเท่าไหร่บ้าง
-              </p>
-            </div>
-          </div>
-
-          <div className="text-right">
-            <span className="text-[10px] text-zinc-400 block font-medium">รวมเงินในเก๊ะ</span>
-            <span className={`text-lg sm:text-xl font-mono font-black ${hasCounted ? 'text-amber-500' : 'text-zinc-500'}`}>
-              ฿{actualCounted.toLocaleString()}
-            </span>
-          </div>
-        </div>
-
-        {/* Top 3 Summary Cards */}
-        <div className="grid grid-cols-3 gap-2 sm:gap-3">
-          <div className={`p-2.5 sm:p-3 rounded-xl border ${isDark ? 'bg-zinc-950/60 border-zinc-800' : 'bg-slate-50 border-slate-200'} text-center space-y-0.5`}>
-            <span className="text-[10px] sm:text-[11px] text-zinc-400 block font-medium">🪙 รวมเงินในเก๊ะ</span>
-            <span className={`text-base sm:text-lg font-mono font-black block ${hasCounted ? 'text-amber-500' : 'text-zinc-500'}`}>
-              ฿{actualCounted.toLocaleString()}
-            </span>
-            <span className="text-[10px] text-zinc-500 block font-mono">
-              {totalItemsCount} รายการ
-            </span>
-          </div>
-
-          <div className={`p-2.5 sm:p-3 rounded-xl border ${isDark ? 'bg-zinc-950/60 border-zinc-800' : 'bg-slate-50 border-slate-200'} text-center space-y-0.5`}>
-            <span className="text-[10px] sm:text-[11px] text-zinc-400 block font-medium">💵 ธนบัตรรวม</span>
-            <span className={`text-base sm:text-lg font-mono font-black block ${totalNotesAmount > 0 ? 'text-emerald-500' : 'text-zinc-500'}`}>
-              ฿{totalNotesAmount.toLocaleString()}
-            </span>
-            <span className="text-[10px] text-zinc-500 block font-mono">
-              {totalNotesQty} ใบ
-            </span>
-          </div>
-
-          <div className={`p-2.5 sm:p-3 rounded-xl border ${isDark ? 'bg-zinc-950/60 border-zinc-800' : 'bg-slate-50 border-slate-200'} text-center space-y-0.5`}>
-            <span className="text-[10px] sm:text-[11px] text-zinc-400 block font-medium">🪙 เหรียญรวม</span>
-            <span className={`text-base sm:text-lg font-mono font-black block ${totalCoinsAmount > 0 ? 'text-amber-500' : 'text-zinc-500'}`}>
-              ฿{totalCoinsAmount.toLocaleString()}
-            </span>
-            <span className="text-[10px] text-zinc-500 block font-mono">
-              {totalCoinsQty} เหรียญ
-            </span>
-          </div>
-        </div>
-
-        {/* Visual Grid: Banknotes Breakdown (5 Denominations) */}
-        <div className="space-y-1.5 pt-1">
-          <div className="flex items-center justify-between text-xs font-bold text-zinc-400">
-            <span className="flex items-center gap-1.5">
-              <Banknote className="w-3.5 h-3.5 text-emerald-500" />
-              <span>ธนบัตรในเก๊ะ ({totalNotesQty} ใบ = ฿{totalNotesAmount.toLocaleString()})</span>
-            </span>
-            <span className="text-[10px] font-mono text-zinc-500">5 ชนิด</span>
-          </div>
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
-            {notesBreakdown.map((item) => {
-              const hasQty = item.qty > 0;
-              return (
-                <div
-                  key={item.key}
-                  className={`p-2 rounded-xl border transition-all text-center space-y-1 ${
-                    hasQty
-                      ? isDark
-                        ? 'bg-zinc-800/80 border-amber-500/40 shadow-xs'
-                        : 'bg-white border-amber-400/60 shadow-xs'
-                      : isDark
-                      ? 'bg-zinc-950/40 border-zinc-800/80 opacity-60'
-                      : 'bg-slate-50 border-slate-200 opacity-60'
-                  }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-black border ${item.badgeBg} ${item.badgeText}`}>
-                      ฿{item.value}
-                    </span>
-                    <span className={`text-[10px] font-mono font-bold ${hasQty ? headingText : 'text-zinc-500'}`}>
-                      {item.qty} ใบ
-                    </span>
-                  </div>
-                  <div className={`text-xs sm:text-sm font-mono font-black truncate ${hasQty ? item.textColor : 'text-zinc-500'}`}>
-                    ฿{item.total.toLocaleString()}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Visual Grid: Coins Breakdown (4 Denominations) */}
-        <div className="space-y-1.5 pt-1">
-          <div className="flex items-center justify-between text-xs font-bold text-zinc-400">
-            <span className="flex items-center gap-1.5">
-              <Coins className="w-3.5 h-3.5 text-amber-500" />
-              <span>เหรียญในเก๊ะ ({totalCoinsQty} เหรียญ = ฿{totalCoinsAmount.toLocaleString()})</span>
-            </span>
-            <span className="text-[10px] font-mono text-zinc-500">4 ชนิด</span>
-          </div>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-            {coinsBreakdown.map((item) => {
-              const hasQty = item.qty > 0;
-              return (
-                <div
-                  key={item.key}
-                  className={`p-2 rounded-xl border transition-all text-center space-y-1 ${
-                    hasQty
-                      ? isDark
-                        ? 'bg-zinc-800/80 border-amber-500/40 shadow-xs'
-                        : 'bg-white border-amber-400/60 shadow-xs'
-                      : isDark
-                      ? 'bg-zinc-950/40 border-zinc-800/80 opacity-60'
-                      : 'bg-slate-50 border-slate-200 opacity-60'
-                  }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-black border ${item.badgeBg} ${item.badgeText}`}>
-                      ฿{item.value}
-                    </span>
-                    <span className={`text-[10px] font-mono font-bold ${hasQty ? headingText : 'text-zinc-500'}`}>
-                      {item.qty} เหรียญ
-                    </span>
-                  </div>
-                  <div className={`text-xs sm:text-sm font-mono font-black truncate ${hasQty ? item.textColor : 'text-zinc-500'}`}>
-                    ฿{item.total.toLocaleString()}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      </div>
-
-      {/* 4. CALCULATION & RECONCILIATION SUMMARY (ตรวจสอบ: เงินที่เข้ามาวันนี้ ตรงไหม?) */}
-      <div className={`p-4 rounded-2xl border ${cardBg} shadow-xs space-y-3.5`}>
-        <div className="flex items-center justify-between pb-2 border-b border-zinc-200 dark:border-zinc-800/80">
+        <div className="flex items-center justify-between pb-2 border-b border-zinc-200 dark:border-zinc-800">
           <div className="flex items-center gap-2">
             <Calculator className="w-4 h-4 text-amber-500" />
-            <h2 className={`text-xs font-bold uppercase tracking-wider ${headingText}`}>
-              ตรวจสอบ: เงินที่เข้ามาวันนี้ ตรงไหม? (Cash Inflow & Reconciliation)
+            <h2 className={`text-xs sm:text-sm font-bold uppercase tracking-wider ${headingText}`}>
+              คำนวณเงินสดในวันนั้น & ตรวจสอบเงินในเก๊ะ
             </h2>
           </div>
           <span className="text-[11px] font-semibold text-emerald-500">
-            คำนวณผลลัพธ์ทันทีแบบเรียลไทม์
+            คำนวณอัตโนมัติ
           </span>
         </div>
 
         {/* 2 Big Comparison Columns */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {/* Column A: Expected Cash in Drawer */}
+          {/* Column A: Expected Cash of That Day (ยอดขายเงินสดในวันนั้น) */}
           <div className={`p-3.5 rounded-xl border ${
             isDark ? 'bg-zinc-950/60 border-zinc-800' : 'bg-slate-50 border-slate-200'
-          } space-y-1.5`}>
-            <div className="flex items-center justify-between text-xs text-zinc-400 font-medium">
-              <span>ยอดที่ควรมีในเก๊ะ (ตามระบบ)</span>
-              <span className="text-[10px] font-mono text-amber-500 font-bold px-1.5 py-0.5 rounded bg-amber-500/10 border border-amber-500/20">
-                เงินทอน + ยอดขายสด
+          } space-y-1`}>
+            <div className="text-xs text-zinc-400 font-medium flex items-center justify-between">
+              <span>เงินสดในวันนั้น (ตามระบบ)</span>
+              <span className="text-[10px] font-mono text-amber-500 font-bold px-1.5 py-0.5 rounded bg-amber-500/10">
+                {cashBills.length} บิลเงินสด
               </span>
             </div>
             <div className="text-2xl sm:text-3xl font-mono font-black text-amber-500">
               ฿{expectedTotal.toLocaleString()}
             </div>
             <div className="text-[11px] text-zinc-400 space-y-0.5 font-mono pt-1 border-t border-dashed border-zinc-700/60">
-              <div className="flex items-center justify-between">
-                <span className="font-sans">💵 เงินทอนเริ่มต้นวัน:</span>
-                <span>฿{openingFloat.toLocaleString()}</span>
-              </div>
-              <div className="flex items-center justify-between text-emerald-500 font-bold">
-                <span className="font-sans">🟢 ยอดขายสดที่เข้ามาวันนี้ ({cashBills.length} บิล):</span>
+              <div className="flex justify-between text-emerald-500 font-semibold">
+                <span className="font-sans">🟢 ขายสดที่เข้ามา:</span>
                 <span>+฿{cashSalesTotal.toLocaleString()}</span>
               </div>
               {cashExpensesTotal > 0 && (
-                <div className="flex items-center justify-between text-rose-500">
+                <div className="flex justify-between text-rose-500">
                   <span className="font-sans">🔴 รายจ่ายสดที่หยิบออก:</span>
                   <span>-฿{cashExpensesTotal.toLocaleString()}</span>
                 </div>
@@ -887,19 +537,19 @@ ${coinLines || '  (ไม่มีเหรียญ)'}
             </div>
           </div>
 
-          {/* Column B: Actual Counted Cash */}
+          {/* Column B: Current Total Cash in Drawer (ตอนนี้มีเงินในเก๊ะเท่าไหร่ คำนวณจากที่ใส่) */}
           <div className={`p-3.5 rounded-xl border ${
             isDark ? 'bg-zinc-950/60 border-zinc-800' : 'bg-slate-50 border-slate-200'
-          } space-y-1.5`}>
-            <div className="flex items-center justify-between text-xs text-zinc-400 font-medium">
-              <span>ยอดเงินสดที่นับได้ในเก๊ะ</span>
+          } space-y-1`}>
+            <div className="text-xs text-zinc-400 font-medium flex items-center justify-between">
+              <span>ตอนนี้มีเงินในเก๊ะ</span>
               {hasCounted && (
                 <button
                   type="button"
                   onClick={handleClearAll}
-                  className="text-[11px] text-zinc-400 hover:text-rose-500 underline"
+                  className="text-[11px] text-rose-400 hover:underline"
                 >
-                  ล้างค่าที่นับ
+                  ล้างเป็น 0
                 </button>
               )}
             </div>
@@ -908,105 +558,166 @@ ${coinLines || '  (ไม่มีเหรียญ)'}
             }`}>
               ฿{actualCounted.toLocaleString()}
             </div>
-            <div className="text-[11px] text-zinc-400 space-y-0.5 pt-1 border-t border-dashed border-zinc-700/60">
-              <div className="flex items-center justify-between">
-                <span>วิธีนับ:</span>
-                <span className="font-semibold text-zinc-300">
-                  {useManualTotal ? 'กรอกยอดรวมเอง' : `นับแยกใบ/เหรียญ (${totalItemsCount} รายการ)`}
-                </span>
+            <div className="text-[11px] text-zinc-400 space-y-0.5 font-mono pt-1 border-t border-dashed border-zinc-700/60">
+              <div className="flex justify-between">
+                <span className="font-sans">💵 ธนบัตรรวม ({totalNotesQty} ใบ):</span>
+                <span>฿{totalNotesAmount.toLocaleString()}</span>
               </div>
-              <div className="flex items-center justify-between text-[10px] text-zinc-400">
-                <span>ธนบัตร: ฿{totalNotesAmount.toLocaleString()} ({totalNotesQty} ใบ)</span>
-                <span>เหรียญ: ฿{totalCoinsAmount.toLocaleString()} ({totalCoinsQty} เหรียญ)</span>
+              <div className="flex justify-between">
+                <span className="font-sans">🪙 เหรียญรวม ({totalCoinsQty} เหรียญ):</span>
+                <span>฿{totalCoinsAmount.toLocaleString()}</span>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Real-time Result Banner: ตรงไหม ขาด หรือ เกิน */}
-        <div className="pt-0.5">
+        {/* Real-time Result Banner: สรุปว่าเงินตรงไหม ขาดหรือเกิน */}
+        <div>
           {!hasCounted ? (
-            <div className={`p-3.5 rounded-xl border text-center text-xs font-semibold ${
+            <div className={`p-3 rounded-xl border text-center text-xs font-semibold ${
               isDark ? 'bg-zinc-800/40 border-zinc-700/60 text-zinc-400' : 'bg-slate-100 border-slate-200 text-slate-600'
             } flex items-center justify-center gap-2`}>
               <RotateCcw className="w-4 h-4 text-zinc-400 shrink-0" />
-              <span>ใส่จำนวนเงินในเก๊ะด้านล่าง — ระบบจะคำนวณออกมาทันทีว่า เงินที่เข้ามาวันนี้ ตรง ขาด หรือ เกิน</span>
+              <span>ใส่จำนวนเงิน แบงค์ และเหรียญด้านล่าง เพื่อคำนวณว่าเงินในเก๊ะตรงไหม ขาดหรือเกิน</span>
             </div>
           ) : isBalanced ? (
-            <div className="p-4 rounded-xl bg-emerald-500/15 border-2 border-emerald-500/40 text-emerald-600 dark:text-emerald-400 flex items-center justify-between gap-3 shadow-xs">
-              <div className="flex items-center gap-3">
-                <CheckCircle2 className="w-7 h-7 text-emerald-500 shrink-0" />
+            <div className="p-3.5 rounded-xl bg-emerald-500/15 border-2 border-emerald-500/40 text-emerald-600 dark:text-emerald-400 flex items-center justify-between gap-3 shadow-xs">
+              <div className="flex items-center gap-2.5">
+                <CheckCircle2 className="w-6 h-6 text-emerald-500 shrink-0" />
                 <div>
-                  <div className="text-base sm:text-lg font-black flex items-center gap-2">
-                    <span>✅ เงินที่เข้ามาวันนี้ ตรงเป๊ะ 100%!</span>
+                  <div className="text-sm sm:text-base font-black">
+                    ✅ เงินในเก๊ะตรงเป๊ะ 100%
                   </div>
                   <div className="text-xs opacity-90">
-                    เงินในเก๊ะมี ฿{actualCounted.toLocaleString()} ตรงกับเงินทอน + ยอดขายสดที่เข้ามารวม ฿{expectedTotal.toLocaleString()} พอดี ไม่มีเงินขาดหรือเกิน
+                    เงินในเก๊ะ ฿{actualCounted.toLocaleString()} ตรงกับเงินสดที่เข้ามาวันนี้พอดี ไม่ขาดไม่เกิน
                   </div>
                 </div>
               </div>
               <div className="text-right shrink-0">
-                <span className="text-xs block text-emerald-500/80 font-bold">ผลต่าง</span>
-                <span className="text-xl sm:text-2xl font-mono font-black text-emerald-500">
+                <span className="text-[10px] block font-bold text-emerald-500/80">ผลต่าง</span>
+                <span className="text-lg sm:text-xl font-mono font-black text-emerald-500">
                   ฿0
                 </span>
               </div>
             </div>
           ) : isSurplus ? (
-            <div className="p-4 rounded-xl bg-sky-500/15 border-2 border-sky-500/40 text-sky-600 dark:text-sky-400 flex items-center justify-between gap-3 shadow-xs">
-              <div className="flex items-center gap-3">
-                <TrendingUp className="w-7 h-7 text-sky-500 shrink-0" />
+            <div className="p-3.5 rounded-xl bg-sky-500/15 border-2 border-sky-500/40 text-sky-600 dark:text-sky-400 flex items-center justify-between gap-3 shadow-xs">
+              <div className="flex items-center gap-2.5">
+                <TrendingUp className="w-6 h-6 text-sky-500 shrink-0" />
                 <div>
-                  <div className="text-base sm:text-lg font-black flex items-center gap-2">
-                    <span>📈 เงินในเก๊ะเกิน +฿{difference.toLocaleString()} บาท</span>
+                  <div className="text-sm sm:text-base font-black">
+                    📈 เงินในเก๊ะเกิน +฿{difference.toLocaleString()} บาท
                   </div>
                   <div className="text-xs opacity-90">
-                    เงินในเก๊ะมี ฿{actualCounted.toLocaleString()} มากกว่ายอดขายรวมเงินทอนที่ควรมี (฿{expectedTotal.toLocaleString()}) ตรวจสอบว่าอาจมีเงินสดที่ไม่ได้เปิดบิล หรือทอนเงินผิด
+                    ในเก๊ะมี ฿{actualCounted.toLocaleString()} มากกว่ายอดเงินสดในวันนั้น (฿{expectedTotal.toLocaleString()})
                   </div>
                 </div>
               </div>
               <div className="text-right shrink-0">
-                <span className="text-xs block text-sky-500/80 font-bold">เงินเกิน</span>
-                <span className="text-xl sm:text-2xl font-mono font-black text-sky-500">
+                <span className="text-[10px] block font-bold text-sky-500/80">เงินเกิน</span>
+                <span className="text-lg sm:text-xl font-mono font-black text-sky-500">
                   +฿{difference.toLocaleString()}
                 </span>
               </div>
             </div>
           ) : (
-            <div className="p-4 rounded-xl bg-rose-500/15 border-2 border-rose-500/40 text-rose-600 dark:text-rose-400 flex items-center justify-between gap-3 shadow-xs">
-              <div className="flex items-center gap-3">
-                <TrendingDown className="w-7 h-7 text-rose-500 shrink-0" />
+            <div className="p-3.5 rounded-xl bg-rose-500/15 border-2 border-rose-500/40 text-rose-600 dark:text-rose-400 flex items-center justify-between gap-3 shadow-xs">
+              <div className="flex items-center gap-2.5">
+                <TrendingDown className="w-6 h-6 text-rose-500 shrink-0" />
                 <div>
-                  <div className="text-base sm:text-lg font-black flex items-center gap-2">
-                    <span>📉 เงินในเก๊ะขาด -฿{Math.abs(difference).toLocaleString()} บาท</span>
+                  <div className="text-sm sm:text-base font-black">
+                    📉 เงินในเก๊ะขาด -฿{Math.abs(difference).toLocaleString()} บาท
                   </div>
                   <div className="text-xs opacity-90">
-                    เงินในเก๊ะมี ฿{actualCounted.toLocaleString()} แต่น้อยกว่ายอดขายรวมเงินทอนที่ควรมี (฿{expectedTotal.toLocaleString()}) ตรวจสอบว่าทอนเงินเกิน หรือมีรายจ่ายสดที่ไม่ได้ลงบันทึก
+                    ในเก๊ะมี ฿{actualCounted.toLocaleString()} แต่น้อยกว่ายอดเงินสดในวันนั้น (฿{expectedTotal.toLocaleString()})
                   </div>
                 </div>
               </div>
               <div className="text-right shrink-0">
-                <span className="text-xs block text-rose-500/80 font-bold">เงินขาด</span>
-                <span className="text-xl sm:text-2xl font-mono font-black text-rose-500">
+                <span className="text-[10px] block font-bold text-rose-500/80">เงินขาด</span>
+                <span className="text-lg sm:text-xl font-mono font-black text-rose-500">
                   -฿{Math.abs(difference).toLocaleString()}
                 </span>
               </div>
             </div>
           )}
         </div>
+
+        {/* 3. SHOW DETAILED CURRENT BREAKDOWN OF NOTES & COINS IN DRAWER (ต้องมี จำนวนเงินในเก๊ะโชว์ ว่ามีแบงค์และเหรียญอะไรเท่าไหร่บ้างด้วย ณ ปัจจุบัน) */}
+        <div className={`p-3 rounded-xl border ${isDark ? 'bg-zinc-950/40 border-zinc-800/80' : 'bg-slate-50/80 border-slate-200'} space-y-2`}>
+          <div className="flex items-center justify-between">
+            <span className={`text-xs font-bold ${headingText} flex items-center gap-1.5`}>
+              <Banknote className="w-3.5 h-3.5 text-amber-500" />
+              <span>จำนวนเงินในเก๊ะ ณ ปัจจุบัน (มีแบงค์และเหรียญอะไรบ้าง)</span>
+            </span>
+            <span className="text-[11px] font-mono font-bold text-amber-500">
+              รวม ฿{actualCounted.toLocaleString()}
+            </span>
+          </div>
+
+          {/* Breakdown Pills: Notes */}
+          <div className="space-y-1">
+            <div className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">
+              ธนบัตร ({totalNotesQty} ใบ = ฿{totalNotesAmount.toLocaleString()})
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {notesBreakdown.map((n) => (
+                <div
+                  key={n.key}
+                  className={`px-2 py-1 rounded-lg text-xs font-mono flex items-center gap-1.5 border transition-all ${
+                    n.qty > 0
+                      ? `${n.badgeBg} ${n.badgeText} font-bold`
+                      : isDark
+                      ? 'bg-zinc-800/30 border-zinc-800 text-zinc-500'
+                      : 'bg-white border-slate-200 text-slate-400'
+                  }`}
+                >
+                  <span>{n.shortLabel}:</span>
+                  <span className="font-black">{n.qty} ใบ</span>
+                  {n.qty > 0 && <span className="text-[10px] opacity-80">(=฿{n.total.toLocaleString()})</span>}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Breakdown Pills: Coins */}
+          <div className="space-y-1 pt-1 border-t border-dashed border-zinc-700/40">
+            <div className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">
+              เหรียญ ({totalCoinsQty} เหรียญ = ฿{totalCoinsAmount.toLocaleString()})
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {coinsBreakdown.map((c) => (
+                <div
+                  key={c.key}
+                  className={`px-2 py-1 rounded-lg text-xs font-mono flex items-center gap-1.5 border transition-all ${
+                    c.qty > 0
+                      ? `${c.badgeBg} ${c.badgeText} font-bold`
+                      : isDark
+                      ? 'bg-zinc-800/30 border-zinc-800 text-zinc-500'
+                      : 'bg-white border-slate-200 text-slate-400'
+                  }`}
+                >
+                  <span>{c.shortLabel}:</span>
+                  <span className="font-black">{c.qty} เหรียญ</span>
+                  {c.qty > 0 && <span className="text-[10px] opacity-80">(=฿{c.total.toLocaleString()})</span>}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
       </div>
 
-      {/* 5. DENOMINATION LIST: ARRANGED VERTICALLY STRAIGHT DOWN (แถบนับเงินสดแยกใบ/เหรียญ) */}
+      {/* 4. INPUT QUANTITIES OF BANKNOTES & COINS (ใส่จำนวน เงิน แบงค์ เหรียญ ว่ามีอะไรเท่าไหร่บ้าง) */}
       <div className={`p-4 rounded-2xl border ${cardBg} shadow-xs space-y-2.5`}>
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-2 border-b border-zinc-200 dark:border-zinc-800/80 gap-2">
+        <div className="flex items-center justify-between pb-2 border-b border-zinc-200 dark:border-zinc-800">
           <div className="flex items-center gap-1.5">
             <Banknote className="w-4 h-4 text-amber-500" />
-            <h2 className={`text-xs font-bold uppercase tracking-wider ${mutedText}`}>
-              แถบนับเงินสดแยกใบ / เหรียญ (เรียงจากมากไปน้อย)
+            <h2 className={`text-xs sm:text-sm font-bold uppercase tracking-wider ${headingText}`}>
+              ใส่จำนวน เงิน แบงค์ เหรียญ
             </h2>
           </div>
-          
-          <div className="flex items-center gap-2 flex-wrap">
+
+          <div className="flex items-center gap-2">
             {dayHistory.length > 0 && (
               <button
                 type="button"
@@ -1015,7 +726,7 @@ ${coinLines || '  (ไม่มีเหรียญ)'}
                 title="ดึงข้อมูลการนับครั้งล่าสุดที่บันทึกไว้ในวันนี้"
               >
                 <RefreshCw className="w-3 h-3" />
-                <span>ดึงค่านับล่าสุด ({dayHistory[0]?.timeStr} น.)</span>
+                <span>ดึงค่านับล่าสุด</span>
               </button>
             )}
 
@@ -1026,51 +737,10 @@ ${coinLines || '  (ไม่มีเหรียญ)'}
             >
               ล้างเป็น 0
             </button>
-
-            <button
-              type="button"
-              onClick={() => {
-                sounds.playClick();
-                setUseManualTotal(!useManualTotal);
-                if (!useManualTotal && actualCounted > 0) {
-                  setManualTotalInput(String(actualCounted));
-                }
-              }}
-              className="text-amber-500 hover:underline text-xs font-bold"
-            >
-              {useManualTotal ? '← กลับไปนับแยกใบ/เหรียญ' : 'หรือกรอกยอดรวมเอง'}
-            </button>
           </div>
         </div>
 
-        {/* Manual Total Input if toggled */}
-        {useManualTotal && (
-          <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 space-y-2">
-            <label className="text-xs font-bold text-amber-500 block">
-              กรอกจำนวนเงินสดทั้งหมดในเก๊ะโดยตรง:
-            </label>
-            <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-base font-bold text-zinc-400">฿</span>
-              <input
-                type="number"
-                min="0"
-                placeholder="กรอกยอดรวม เช่น 2500"
-                value={manualTotalInput}
-                onChange={(e) => setManualTotalInput(e.target.value)}
-                autoFocus
-                className={`w-full pl-8 pr-12 py-2 rounded-lg font-mono font-bold text-lg border ${
-                  isDark ? 'bg-zinc-900 border-zinc-700 text-white' : 'bg-white border-slate-300 text-slate-900'
-                } focus:outline-none focus:border-amber-500`}
-              />
-              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-zinc-400 font-bold">บาท</span>
-            </div>
-            <p className="text-[11px] text-zinc-400">
-              เมื่อพิมพ์จำนวนเงิน ระบบจะคำนวณเปรียบเทียบกับยอดขายและเงินทอนทันทีด้านบน
-            </p>
-          </div>
-        )}
-
-        {/* Vertical Straight List */}
+        {/* 9 Denomination Rows */}
         <div className="divide-y divide-zinc-200 dark:divide-zinc-800/60">
           {DENOM_LIST.map((item) => {
             const qty = counts[item.key] || 0;
@@ -1217,240 +887,6 @@ ${coinLines || '  (ไม่มีเหรียญ)'}
           </button>
         </div>
       </div>
-
-      {/* 4. COLLAPSIBLE ACCORDION: BILLS & EXPENSES (ที่มาของเงินสด) */}
-      <div className={`rounded-2xl border ${cardBg} overflow-hidden shadow-xs`}>
-        <button
-          type="button"
-          onClick={() => {
-            sounds.playClick();
-            setShowBreakdownDetails(!showBreakdownDetails);
-          }}
-          className="w-full p-3.5 flex items-center justify-between text-left hover:bg-zinc-800/20 transition-all"
-        >
-          <div className="flex items-center gap-2 text-xs font-bold text-zinc-300">
-            <Receipt className="w-4 h-4 text-emerald-500" />
-            <span>ที่มาของเงิน: บิลขายสด ({cashBills.length} บิล) & รายจ่ายสด ({cashExpenses.length} รายการ)</span>
-          </div>
-          <div className="flex items-center gap-1 text-xs text-zinc-400">
-            <span>{showBreakdownDetails ? 'ซ่อน' : 'แสดง'}</span>
-            {showBreakdownDetails ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-          </div>
-        </button>
-
-        {showBreakdownDetails && (
-          <div className="p-3.5 pt-0 border-t border-zinc-200 dark:border-zinc-800/80 space-y-3">
-            {/* ตารางกระทบยอดทางบัญชี (Reconciliation Summary for Accurate Accounting) */}
-            <div className={`p-3 rounded-xl border ${isDark ? 'bg-zinc-950/70 border-zinc-800' : 'bg-slate-50 border-slate-200'} space-y-1.5 text-xs`}>
-              <div className="flex items-center justify-between font-bold pb-1.5 border-b border-zinc-200 dark:border-zinc-800 text-zinc-400">
-                <span className="flex items-center gap-1.5 text-amber-500">
-                  <FileSpreadsheet className="w-4 h-4" />
-                  <span>สรุปการกระทบยอดบัญชีเงินสดประจำวัน</span>
-                </span>
-                <span className="text-[10px] font-mono">เชื่อมโยง แดชบอร์ด & รายจ่าย</span>
-              </div>
-
-              <div className="space-y-1 pt-1 font-mono text-[11px]">
-                <div className="flex justify-between text-zinc-400">
-                  <span className="font-sans">1. เงินทอนเปิดเก๊ะ:</span>
-                  <span>฿{openingFloat.toLocaleString()}</span>
-                </div>
-                <div className="flex justify-between text-emerald-500">
-                  <span className="font-sans">2. ยอดขายสดหน้าร้านตาม POS (+):</span>
-                  <span>+฿{cashSalesTotal.toLocaleString()} ({cashBills.length} บิล)</span>
-                </div>
-                <div className="flex justify-between text-rose-500">
-                  <span className="font-sans">3. รายจ่ายร้านที่จ่ายสดจากเก๊ะ (-):</span>
-                  <span>-฿{cashExpensesTotal.toLocaleString()} ({cashExpenses.length} รายการ)</span>
-                </div>
-                <div className="flex justify-between font-bold text-amber-500 pt-1 border-t border-dashed border-zinc-700">
-                  <span className="font-sans">4. เงินสดคงเหลือตามระบบที่ต้องมี (Book Cash):</span>
-                  <span>฿{expectedTotal.toLocaleString()}</span>
-                </div>
-                <div className="flex justify-between font-bold text-zinc-200">
-                  <span className="font-sans">5. เงินสดที่ตรวจนับได้จริงในเก๊ะ (Physical Cash):</span>
-                  <span>฿{actualCounted.toLocaleString()}</span>
-                </div>
-                <div className={`flex justify-between font-bold pt-1 border-t border-zinc-700 ${
-                  !hasCounted
-                    ? 'text-zinc-500'
-                    : isBalanced
-                    ? 'text-emerald-500'
-                    : isSurplus
-                    ? 'text-sky-400'
-                    : 'text-rose-400'
-                }`}>
-                  <span className="font-sans">6. ผลต่างกระทบยอดทางบัญชี:</span>
-                  <span>
-                    {!hasCounted
-                      ? 'รอตรวจนับ'
-                      : isBalanced
-                      ? '✅ ตรงตามระบบ 100%'
-                      : isSurplus
-                      ? `📈 เงินสดเกินบัญชี +฿${difference.toLocaleString()} (บันทึกรายได้เบ็ดเตล็ด)`
-                      : `📉 เงินสดขาดบัญชี -฿${Math.abs(difference).toLocaleString()} (บันทึกค่าใช้จ่ายขาดเงินสด)`}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            {/* Cash Bills */}
-            <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <span className="text-xs font-bold text-emerald-500">
-                  บิลขายเงินสด (+฿{cashSalesTotal.toLocaleString()})
-                </span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    sounds.playClick();
-                    setActiveTab('dashboard');
-                  }}
-                  className="text-[11px] font-bold text-sky-500 hover:underline flex items-center gap-0.5"
-                >
-                  <span>ดูบิลทั้งหมดในแดชบอร์ด ({dayBills.length} บิล)</span>
-                  <ArrowRight className="w-3 h-3" />
-                </button>
-              </div>
-              {cashBills.length === 0 ? (
-                <p className="text-xs text-zinc-400 italic">ไม่มีบิลขายเงินสดในวันนี้</p>
-              ) : (
-                <div className="space-y-1 max-h-40 overflow-y-auto pr-1">
-                  {cashBills.map((b) => (
-                    <div
-                      key={b.id}
-                      onClick={() => openReceiptModal(b)}
-                      className={`p-2 rounded-lg text-xs flex items-center justify-between cursor-pointer border hover:border-emerald-500/40 transition-all ${
-                        isDark ? 'bg-zinc-950/40 border-zinc-800' : 'bg-slate-50 border-slate-200'
-                      }`}
-                    >
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono text-zinc-400">#{b.billNumber || b.id.slice(-4)}</span>
-                        <span className="font-semibold">{b.customerName || 'ลูกค้าทั่วไป'}</span>
-                        <span className="text-[10px] text-zinc-400">({b.timeStr})</span>
-                      </div>
-                      <span className="font-mono font-bold text-emerald-500">
-                        +฿{(b.paymentMethod === 'cash' ? (b.cashAmount > 0 ? b.cashAmount : b.grossTotal) : (b.cashAmount || 0)).toLocaleString()}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Cash Expenses */}
-            <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <span className="text-xs font-bold text-rose-500">
-                  รายจ่ายเงินสด (-฿{cashExpensesTotal.toLocaleString()})
-                </span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    sounds.playClick();
-                    setActiveTab('expenses');
-                  }}
-                  className="text-[11px] font-bold text-rose-500 hover:underline flex items-center gap-0.5"
-                >
-                  <span>+ บันทึกรายจ่ายเงินสด</span>
-                  <ArrowRight className="w-3 h-3" />
-                </button>
-              </div>
-              {cashExpenses.length === 0 ? (
-                <p className="text-xs text-zinc-400 italic">ไม่มีรายจ่ายเงินสดในวันนี้</p>
-              ) : (
-                <div className="space-y-1 max-h-40 overflow-y-auto pr-1">
-                  {cashExpenses.map((e) => (
-                    <div
-                      key={e.id}
-                      className={`p-2 rounded-lg text-xs flex items-center justify-between border ${
-                        isDark ? 'bg-zinc-950/40 border-zinc-800' : 'bg-slate-50 border-slate-200'
-                      }`}
-                    >
-                      <div className="flex items-center gap-2">
-                        <span className="font-semibold">{e.title}</span>
-                        <span className="text-[10px] text-zinc-400">({e.category})</span>
-                      </div>
-                      <span className="font-mono font-bold text-rose-500">
-                        -฿{(e.amount || 0).toLocaleString()}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* 5. COLLAPSIBLE ACCORDION: HISTORY */}
-      {dayHistory.length > 0 && (
-        <div className={`rounded-2xl border ${cardBg} overflow-hidden shadow-xs`}>
-          <button
-            type="button"
-            onClick={() => {
-              sounds.playClick();
-              setShowHistory(!showHistory);
-            }}
-            className="w-full p-3.5 flex items-center justify-between text-left hover:bg-zinc-800/20 transition-all"
-          >
-            <div className="flex items-center gap-2 text-xs font-bold text-zinc-300">
-              <History className="w-4 h-4 text-amber-500" />
-              <span>ประวัติการตรวจนับที่บันทึกแล้วในวันนี้ ({dayHistory.length} ครั้ง)</span>
-            </div>
-            <div className="flex items-center gap-1 text-xs text-zinc-400">
-              <span>{showHistory ? 'ซ่อน' : 'แสดง'}</span>
-              {showHistory ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-            </div>
-          </button>
-
-          {showHistory && (
-            <div className="p-3.5 pt-0 border-t border-zinc-200 dark:border-zinc-800/80 space-y-2">
-              {dayHistory.map((rec) => (
-                <div
-                  key={rec.id}
-                  className={`p-2.5 rounded-xl border flex items-center justify-between gap-3 text-xs ${
-                    isDark ? 'bg-zinc-950/50 border-zinc-800' : 'bg-slate-50 border-slate-200'
-                  }`}
-                >
-                  <div className="space-y-0.5">
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono font-bold text-amber-500">{rec.timeStr} น.</span>
-                      <span
-                        className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
-                          rec.status === 'balanced'
-                            ? 'bg-emerald-500/10 text-emerald-500'
-                            : rec.status === 'surplus'
-                            ? 'bg-sky-500/10 text-sky-500'
-                            : 'bg-rose-500/10 text-rose-500'
-                        }`}
-                      >
-                        {rec.status === 'balanced'
-                          ? 'ตรงเป๊ะ'
-                          : rec.status === 'surplus'
-                          ? `เกิน +฿${rec.difference.toLocaleString()}`
-                          : `ขาด -฿${Math.abs(rec.difference).toLocaleString()}`}
-                      </span>
-                    </div>
-                    <div className="text-[11px] text-zinc-400">
-                      นับได้: ฿{rec.actualCounted.toLocaleString()} (ระบบ: ฿{rec.expectedTotal.toLocaleString()})
-                    </div>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() => deleteCashDrawerRecord(rec.id)}
-                    className="p-1.5 rounded-lg text-zinc-400 hover:text-rose-500 hover:bg-rose-500/10 transition-all"
-                    title="ลบรายการนี้"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
     </div>
   );
 };
